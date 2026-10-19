@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -364,6 +365,23 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("by `@claude-code`", unreleased)
         self.assertEqual(run(self.root, "git", "status", "--porcelain").stdout.strip(), "")
 
+    def test_logging_traces_runs_and_blocks_print(self) -> None:
+        """The CLI logs to DATA_DIR/logs with a run id and line info; stdout keeps only the result; print in services is blocked."""
+        data = Path(self.tmp.name) / "data"
+        env = {"PYTHONPATH": str(self.root / "src"), "DATA_DIR": str(data), "LOG_TO_FILE": "true", "LOG_LEVEL": "INFO"}
+        res = run(self.root, sys.executable, "-m", "collab.entrypoints.cli", "--name", "Ann", env=env)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "Hello, Ann!", "logs go to stderr, the result to stdout")
+        app_log = (data / "logs" / "app.log").read_text(encoding="utf-8")
+        run_id = re.search(r"\[([0-9a-f]{8})\] .*run started", app_log).group(1)
+        self.assertRegex(app_log, rf"INFO +\[{run_id}\] collab\.services\.greeting:create_greeting:\d+ - greeting user='Ann'")
+        self.assertTrue((data / "logs" / "errors.log").exists())
+        service = self.pkg / "services" / "greeting.py"
+        service.write_text(service.read_text(encoding="utf-8") + "\n\ndef debug_dump(x: int) -> None:\n    \"\"\"Dump.\n\n    Args:\n        x: Value.\n    \"\"\"\n    print(x)\n", encoding="utf-8")
+        guard = run(self.root, ".agents/skills/code-review-guard/scripts/review_guard.py")
+        self.assertEqual(guard.returncode, 1)
+        self.assertIn("[Logging]", guard.stdout)
+
     def test_check_passes_right_after_adding_files(self) -> None:
         """`agentctl check` refreshes the tree locally, so a new file never fails it; `tree --check` stays strict."""
         self.write_documented_module("src/collab/services/cache.py")
@@ -479,6 +497,10 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn(transcripts[0].name, summary)
         self.assertEqual(run(self.root, "git", "ls-files", ".agents/conversations").stdout.strip(), "", "never committed")
         self.assertEqual(run(self.root, "git", "status", "--porcelain", ".agents/conversations").stdout.strip(), "", "git-ignored")
+        status = run(self.root, "scripts/agentctl.py", "status").stdout
+        self.assertIn("上一次的交接紀錄", status)
+        self.assertIn("**下一步**: TTL metric", status, "the last closeout's next step is shown (shared through git)")
+        self.assertIn("最新摘要的「下一步」", status, "the local summary's next steps are shown too")
         board = (self.root / ".agents" / "handoff" / "LATEST.md").read_text(encoding="utf-8")
         self.assertIn("**目標**: Add cache", board)
         self.assertIn("**下一步**: TTL metric", board)

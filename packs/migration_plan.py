@@ -352,13 +352,14 @@ def group_batches(entries: list[Entry]) -> list[tuple[str, list[Entry]]]:
 DONE_PER_BATCH = """每一批都必須做到（做到才可 `agentctl task done`）：
 
 1. **兩個 commit：先搬、再整理**（保證 `git log --follow` 與 blame 追得到舊歷史）：
-   - 第一個 commit 只用 `git mv legacy/舊路徑 新路徑` 搬移，內容一個字都不改：`agentctl commit --bump none -m "refactor(migration): move <檔名> from legacy"`。pre-commit 只對「從 legacy/ 原樣搬入」的檔案暫時放行註解、大小與分層問題（秘密與禁用套件仍會擋）。
+   - 第一個 commit 只用 `git mv legacy/舊路徑 新路徑` 搬移，內容一個字都不改：`agentctl commit --bump none -m "refactor(migration): move <檔名> from legacy"`。pre-commit 只對「從 legacy/ 原樣搬入」的檔案暫時放行註解、大小、分層與 print 問題（秘密與禁用套件仍會擋）。
    - 下一個 commit 必須把這批檔案全部整理到符合規範（第 2 點），否則任何 commit 與 `agentctl check` 都過不了，所以一批只搬少量檔案。
 2. 依新規範修改：
    - **註解**：檔案開頭用途說明；每個函數/類別的說明、每個參數（`Args:` / `@param`）與回傳值（[`CODING_PRINCIPLES.md`](../standards/CODING_PRINCIPLES.md) §0）。
    - **型別**：Python 參數與回傳值都有型別，`uv run mypy` 通過（strict）。
    - **分層**：放到正確的層；環境變數只在 `config` 層讀取，其他層改收 `AppConfig` 參數（[`ARCHITECTURE_RULES.md`](../standards/ARCHITECTURE_RULES.md)）。
-   - **函式大小**：符合 `[quality]` 門檻；`print` 除錯改用 logging。
+   - **函式大小**：符合 `[quality]` 門檻。
+   - **Log**：除了 entrypoints，`print` 一律改成模組 logger；關鍵步驟、外部呼叫與例外都要記 log（[`CODING_PRINCIPLES.md`](../standards/CODING_PRINCIPLES.md) §0.4）。
    - **秘密**：金鑰移到 `.env`，`.env.example` 只留變數名稱。
    - **依賴**：只用 `uv add` / `pnpm add`（[`ENVIRONMENT_AND_DEPENDENCIES.md`](../standards/ENVIRONMENT_AND_DEPENDENCIES.md)）。
    - **本機服務**：綁 `127.0.0.1`，網址不用 `localhost`。

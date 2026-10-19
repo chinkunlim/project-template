@@ -7,6 +7,8 @@ Purpose:
         validated here, at the edge, then converted to domain objects)
       - `src/<pkg>/entrypoints/http/app.py`     : `create_app(config)` builds routes; with
         `--with web` it also serves `web/`; with `--with db` it stores greetings via the repository
+      - `src/<pkg>/entrypoints/http/middleware.py`: request id (`X-Request-ID`) on every log line,
+        one access line per request (method, path, status, duration), errors with traceback
       - `src/<pkg>/entrypoints/http/server.py`  : `uv run <name>-server`, binds 127.0.0.1 only
       - `tests/test_api.py`                    : TestClient tests (no real server needed)
 """
@@ -69,6 +71,7 @@ def create_app(config: AppConfig{factory_param}) -> FastAPI:
         The configured application.
     """
     app = FastAPI(title="{name}", version="0.1.0")
+    add_request_logging(app)
 {factory_init}    app.include_router(build_greeting_router(config{factory_arg}))
 {history_include}{web_mount}    return app
 
@@ -137,6 +140,62 @@ def build_history_router(config: AppConfig, factory: sessionmaker[Session]) -> A
     return router
 '''
 
+MIDDLEWARE_PY = '''"""Request logging: one request id per HTTP request on every log line, plus an access line.
+
+Clients may send `X-Request-ID`; otherwise a new id is created. The id is returned in the
+response header, so a user's error report can be matched with `grep <id> app.log`.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Awaitable, Callable
+
+from fastapi import FastAPI, Request, Response
+
+from {pkg}.config.logging_setup import new_run_id, reset_run_id, set_run_id
+
+logger = logging.getLogger(__name__)
+
+
+def add_request_logging(app: FastAPI) -> None:
+    """Install the request-logging middleware.
+
+    Args:
+        app: Application to wrap.
+    """
+
+    @app.middleware("http")
+    async def log_request(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        """Tag the request with an id, log its result and duration, and log failures with traceback.
+
+        Args:
+            request: Incoming request.
+            call_next: The rest of the application.
+
+        Returns:
+            The response, with an `X-Request-ID` header.
+        """
+        request_id = request.headers.get("X-Request-ID") or new_run_id()
+        token = set_run_id(request_id)
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            ms = (time.perf_counter() - start) * 1000
+            logger.exception("%s %s failed after %.1f ms", request.method, request.url.path, ms)
+            raise
+        finally:
+            reset_run_id(token)
+        level = logging.WARNING if response.status_code >= 400 else logging.INFO
+        ms = (time.perf_counter() - start) * 1000
+        path, status = request.url.path, response.status_code
+        logger.log(level, "[%s] %s %s -> %s (%.1f ms)", request_id, request.method, path, status, ms)
+        response.headers["X-Request-ID"] = request_id
+        return response
+'''
+
 SERVER_PY = '''"""HTTP server entrypoint: `uv run {dist}-server` (listens on 127.0.0.1 only by default)."""
 
 from __future__ import annotations
@@ -151,8 +210,9 @@ from {pkg}.entrypoints.http.app import create_app
 def main() -> None:
     """Start uvicorn on `HTTP_HOST` / `HTTP_PORT` from `.env` (default 127.0.0.1:8000)."""
     config = load_config()
-    setup_logging(config.log_level)
-    uvicorn.run(create_app(config), host=config.http_host, port=config.http_port)
+    setup_logging(config.log_level, config.logs_dir if config.log_to_file else None)
+    # log_config=None: uvicorn's own messages go through our handlers and format (run id, files)
+    uvicorn.run(create_app(config), host=config.http_host, port=config.http_port, log_config=None)
 
 
 if __name__ == "__main__":
@@ -186,6 +246,13 @@ class ApiTest(unittest.TestCase):
     def test_invalid_body_is_rejected(self) -> None:
         """An empty name fails validation with 422."""
         self.assertEqual(self.client.post("/greetings", json={{"user_name": ""}}).status_code, 422)
+
+    def test_requests_are_logged_with_request_id(self) -> None:
+        """Each request gets an `X-Request-ID` (kept when sent) and one access log line."""
+        with self.assertLogs("{pkg}.entrypoints.http.middleware", level="INFO") as logs:
+            res = self.client.get("/health", headers={{"X-Request-ID": "trace-1"}})
+        self.assertEqual(res.headers["X-Request-ID"], "trace-1")
+        self.assertIn("GET /health -> 200", logs.output[0])
 {db_test}
 
 if __name__ == "__main__":
@@ -255,6 +322,7 @@ def build_app_module(pkg: str, name: str, with_db: bool, with_web: bool) -> str:
     first = [
         f"from {pkg}.config.settings import AppConfig",
         f"from {pkg}.domain.models import GreetingRequest",
+        f"from {pkg}.entrypoints.http.middleware import add_request_logging",
         f"from {pkg}.entrypoints.http.schemas import GreetingIn, GreetingOut",
         f"from {pkg}.services.greeting import create_greeting",
     ]
@@ -308,6 +376,7 @@ def build_api_test(pkg: str, with_db: bool) -> str:
             f"from {pkg}.adapters.db.session import create_db_engine, make_session_factory",
         ]
     return API_TEST.format(
+        pkg=pkg,
         imports=import_block(["import unittest"], ["from fastapi.testclient import TestClient"], first),
         db_doc=" and an in-memory database" if with_db else "",
         db_setup=(
@@ -333,5 +402,6 @@ def scaffold_api_pack(target_dir: Path, pkg: str, names: dict[str, str], addons:
     _write(http / "schemas.py", SCHEMAS_PY)
     _write(http / "app.py", build_app_module(pkg, names["project"], "db" in addons, "web" in addons))
     _write(http / "server.py", SERVER_PY.format(pkg=pkg, dist=names["dist"]))
+    _write(http / "middleware.py", MIDDLEWARE_PY.format(pkg=pkg))
     _write(http / "API.md", API_GUIDE.format(dist=names["dist"]))
     _write(target_dir / "tests" / "test_api.py", build_api_test(pkg, "db" in addons))

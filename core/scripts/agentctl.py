@@ -7,7 +7,7 @@ Purpose:
     shows the full options of `auto_commit.py`.
 
 Sub-commands:
-    status    Handoff board, active tasks, recent conversation summaries, uncommitted changes.
+    status    Handoff board, last handoff (goal / next step), recent summaries, uncommitted changes.
     pause     Leaving mid-task ("去上課"): note it on the board + WIP commit, e.g. pause "class break"
     task      Task cards: create / claim / handoff / done / list   (agent_task.py)
     commit    Attributed local commit + CHANGELOG Unreleased        (auto_commit.py)
@@ -87,6 +87,34 @@ def print_board() -> None:
     print(live.strip())
 
 
+def print_last_handoff() -> None:
+    """Print the newest timeline entry of `LATEST.md` (last closeout / pause / handoff, shared through git)."""
+    handoff = ROOT / ".agents" / "handoff" / "LATEST.md"
+    text = handoff.read_text(encoding="utf-8") if handoff.exists() else ""
+    timeline = text.split(LIVE_END, 1)[-1]
+    entries = [e for e in timeline.split("\n### ")[1:] if e.strip()]
+    if entries:
+        print("\n### 🕘 上一次的交接紀錄（目標、下一步）\n")
+        print("### " + entries[0].strip())
+
+
+def section_of(markdown: str, title_prefix: str) -> str:
+    """Return the body of the `## <title>` section whose title starts with `title_prefix`.
+
+    Args:
+        markdown: Markdown document.
+        title_prefix: Beginning of the section title, e.g. `下一步`.
+
+    Returns:
+        Section body without the heading (empty when missing).
+    """
+    for block in markdown.split("\n## ")[1:]:
+        heading, _, body = block.partition("\n")
+        if heading.strip().startswith(title_prefix):
+            return body.strip()
+    return ""
+
+
 def print_recent_sessions(limit: int = 3) -> None:
     """Print the newest local conversation summaries (`.agents/conversations/`, not in git).
 
@@ -98,7 +126,11 @@ def print_recent_sessions(limit: int = 3) -> None:
     print("\n### 🗂️ 最近的對話摘要（本機）")
     for p in logs:
         print(f"- {p.relative_to(ROOT).as_posix()}")
-    if not logs:
+    if logs:
+        next_steps = section_of(logs[0].read_text(encoding="utf-8"), "下一步")
+        if next_steps:
+            print(f"\n最新摘要的「下一步」：\n{next_steps}")
+    else:
         print("- (這台電腦尚無；其他電腦的進度請看上方交接看板)")
 
 
@@ -120,6 +152,7 @@ def cmd_status() -> int:
     version = json.loads(lock.read_text(encoding="utf-8")).get("framework_version", "?") if lock.exists() else "?"
     print(f"# {ROOT.name} — agentctl status (framework v{version})\n")
     print_board()
+    print_last_handoff()
     print_recent_sessions()
     print_git_summary()
     print("\n👉 接手：agentctl task claim TASK-NNN --agent <名字>；新工作：agentctl task create \"標題\" --agent <名字>")

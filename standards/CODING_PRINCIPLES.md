@@ -92,6 +92,30 @@ export function calculateTotal(items, taxRate, coupon) { ... }
 
 ---
 
+## 0.4 Log 紀錄規範（方便追蹤與除錯）
+
+程式出問題時，第一個看的是 log。Python 專案的 `config/logging_setup.py` 已經設定好格式與檔案，**寫程式時只要照下面做**：
+
+1. **每個模組一個 logger**：`logger = logging.getLogger(__name__)`。只有 `entrypoints` 可以 `print`（CLI 給使用者看的結果），其他層一律用 logger（`code-review-guard` 會擋 `[Logging]`，可用 `[quality] print_allowed_layers` 調整）。
+2. **要記什麼**：
+   | 時機 | 等級 | 例子 |
+   |---|---|---|
+   | 一次執行 / 一個請求 / 一批工作的開始與結束（含筆數、耗時） | INFO | `logger.info("batch done files=%d ok=%d failed=%d (%.1fs)", ...)` |
+   | 每次外部呼叫（API、資料庫、檔案、模型）：對象、結果、耗時、重試 | INFO / DEBUG | `logger.info("ollama model=%s status=%s (%.0f ms)", ...)` |
+   | 可以繼續、但不正常的狀況（重試、跳過、放進 needs_review） | WARNING | `logger.warning("skip %s: %s", path.name, reason)` |
+   | 失敗：在處理例外的地方用 `logger.exception(...)`（會附 traceback），不要吞掉例外 | ERROR | `logger.exception("convert failed file=%s", path.name)` |
+   | 除錯細節（中間值、分支） | DEBUG | `.env` 設 `LOG_LEVEL=DEBUG` 才會出現 |
+3. **寫法**：用 `%s` 參數（`logger.info("user=%s", uid)`），不要先組字串；訊息寫「發生什麼 + 關鍵 id」，讓一行就看得懂。
+4. **不能記**：API key、token、密碼、完整個資；檔案內容只記檔名與大小。
+5. **去哪裡看**：
+   - 主控台（stderr）：每行有時間、等級、`[run id]`、`模組:函式:行號`。
+   - `DATA_DIR/logs/app.log`（全部）與 `errors.log`（WARNING 以上），自動輪替；`.env` 的 `LOG_TO_FILE=false` 可關閉。
+   - 追蹤某一次執行或某個 API 請求：`grep <run id> app.log`；API 回應的 `X-Request-ID` 就是那個 id。
+   - 沒被接住的例外也會連同 traceback 寫進 log。
+6. **JS / GAS**：用 `console.info / warn / error`，訊息格式同上（事件 + 關鍵 id + 結果）；GAS 的紀錄在 Apps Script「執行作業」頁查看，不要用 `Logger.log` 混用。
+
+---
+
 ## 0.5 Karpathy 四原則（避免 LLM 常見通病）
 
 1. **Think Before Coding**：需求模糊時先列出假設與取捨並詢問，不要默默猜。

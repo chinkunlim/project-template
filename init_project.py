@@ -129,6 +129,7 @@ def build_agents_md(project_name: str, description: str) -> str:
 9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。
 10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
 11. **通用規則回寫母版**：使用者提出「以後每個專案都要這樣」的規則時，寫進 [`docs/TEMPLATE_FEEDBACK.md`](docs/TEMPLATE_FEEDBACK.md)，由使用者決定是否更新專案模板；只適用本專案的規則寫進 [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
+12. **Log 追蹤**：每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`；執行的開始與結束、外部呼叫、跳過與重試、例外（`logger.exception`）都要記 log，不記秘密與個資。log 在 `DATA_DIR/logs/`，用 run id 追蹤一次執行（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
 <!-- RULES_END -->
 
 ## 2.5 Agent 分工（選填，由使用者維護）

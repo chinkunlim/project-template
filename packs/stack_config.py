@@ -201,6 +201,7 @@ max_file_lines = 500           # soft limit per file -> warning
 hard_max_file_lines = 800      # hard limit per file -> CRITICAL (split into sub-modules)
 max_commit_file_mb = 10        # pre-commit blocks larger files; data belongs in DATA_DIR
 block_data_files = true        # block PDF/EPUB/archives/media/DB files; set false for document projects
+print_allowed_layers = ["entrypoints"]  # other layers must log with `logging.getLogger(__name__)`, not print
 
 [commands]
 # Python always runs through uv (project .venv, uv-managed Python) — never a global pip

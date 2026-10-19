@@ -44,7 +44,7 @@ python3 scripts/agentctl.py task claim TASK-NNN --agent <你的名字>
 
 ## 2. 每一批的步驟
 
-1. **先搬移，單獨一個 commit，內容不改**：git 一定會記成改名，`git log --follow` 與 blame 追得到舊歷史。pre-commit 只對「從 legacy/ 原樣搬入」的檔案暫時放行註解、大小與分層問題（秘密與禁用套件仍會擋）。一批只搬少量檔案，因為下一個 commit 必須全部整理好：
+1. **先搬移，單獨一個 commit，內容不改**：git 一定會記成改名，`git log --follow` 與 blame 追得到舊歷史。pre-commit 只對「從 legacy/ 原樣搬入」的檔案暫時放行註解、大小、分層與 print 問題（秘密與禁用套件仍會擋）。一批只搬少量檔案，因為下一個 commit 必須全部整理好：
 
 ```bash
 git mv legacy/舊路徑/檔案.py src/<pkg>/<layer>/新檔名.py
@@ -58,7 +58,7 @@ python3 scripts/agentctl.py commit --bump none -m "refactor(migration): move 檔
    - 檔案開頭用途說明；每個函數/類別說明；每個參數 `Args:`（JS `@param`）；回傳值。
    - Python 型別完整，`uv run mypy` 通過。
    - 放在正確的層；環境變數只在 `config` 讀，其他層改收參數；函式過長就拆。
-   - `print` 改 logging（`config/logging_setup.py`）；金鑰移到 `.env`。
+   - `print` 改模組 logger（只有 entrypoints 可 print），關鍵步驟、外部呼叫與例外補上 log（`CODING_PRINCIPLES.md` §0.4）；金鑰移到 `.env`。
    - 依賴用 `uv add` / `pnpm add`，不用 pip / npm；本機服務綁 `127.0.0.1`。
    - 沿用或補寫測試（舊測試搬到 `tests/` 並改成新的 import 路徑）。
 3. **驗證**：

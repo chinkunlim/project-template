@@ -52,6 +52,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "hard_max_file_lines": 800,
         "max_commit_file_mb": 10,
         "block_data_files": True,
+        # Only these layers may `print` (a CLI's real output); every other layer logs.
+        "print_allowed_layers": ["entrypoints"],
     },
     "commands": {"test": "", "lint": "", "typecheck": "", "dbcheck": "", "evals": ""},
     "skills": {"enabled": []},  # empty list = every skill installed in .agents/skills

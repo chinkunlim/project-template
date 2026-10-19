@@ -14,6 +14,8 @@ Checks (thresholds come from `.agents/project.toml`):
         * Go / Rust: header comment at the top; `//` (Go) or `///` (Rust) doc comment above every function.
         * HTML: a `<!-- ... -->` comment right after `<!DOCTYPE>`; CSS/SCSS: a `/* ... */` header.
     - Layering: only `[architecture] env_access_layers` may read environment variables.
+    - Logging: Python code in a layer outside `[quality] print_allowed_layers` (default
+      `entrypoints`) must use a module logger instead of `print`.
     - Secrets: hard-coded API keys / tokens / private keys.
     - Size: function length, parameter count and nesting depth; file length (`max_file_lines`
       warning, `hard_max_file_lines` CRITICAL — split big files into sub-modules).
@@ -25,7 +27,7 @@ Checks (thresholds come from `.agents/project.toml`):
 Legacy migration (`--allow-legacy-moves`, passed by the pre-commit hook only):
     A file staged as an unchanged move out of `legacy/` (git rename R100) may be committed
     once without docs, so git always records the rename and `git log --follow` keeps the old
-    history. Its [Docs] / [Size] / [Layer] findings become warnings for that commit only;
+    history. Its [Docs] / [Size] / [Layer] / [Logging] findings become warnings for that commit only;
     secrets and forbidden imports still block. `agentctl check`, `migration --verify` and the
     next commit report them as CRITICAL again, so the file must be fixed right away.
 
@@ -274,6 +276,7 @@ def audit_python_file(text: str, rel: str, layer: str | None, config: dict) -> l
         return [_issue("CRITICAL", rel, exc.lineno or 1, f"語法錯誤: {exc.msg}")]
     lines = text.splitlines()
     env_layers = set(config["architecture"].get("env_access_layers", ["config"]))
+    print_layers = set(config["quality"].get("print_allowed_layers", ["entrypoints"]))
     issues: list[dict] = []
     if config["quality"].get("require_docstrings", True) and not is_test_file(rel):
         issues += python_docstring_issues(tree, rel)
@@ -285,6 +288,9 @@ def audit_python_file(text: str, rel: str, layer: str | None, config: dict) -> l
             issues += check_fn_metrics(rel, node.name, node.lineno, sizes, config["quality"])
         if layer and layer not in env_layers and isinstance(node, ast.Attribute) and node.attr in ("environ", "getenv"):
             issues.append(_issue("CRITICAL", rel, node.lineno, f"[Layer] `{layer}` 層不可直接讀取環境變數（只允許 {sorted(env_layers)}）。"))
+        if layer and layer not in print_layers and isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
+            issues.append(_issue("CRITICAL", rel, node.lineno,
+                                 f"[Logging] `{layer}` 層不可用 print，請用 `logger = logging.getLogger(__name__)` 記 log（只有 {sorted(print_layers)} 可 print）。"))
     return issues
 
 
@@ -568,7 +574,7 @@ def iter_source_files(root: Path, config: dict, pc_mod: object) -> list[Path]:
     return files
 
 
-DEFERRABLE_TAGS = ("[Docs]", "[Size]", "[Layer]")
+DEFERRABLE_TAGS = ("[Docs]", "[Size]", "[Layer]", "[Logging]")
 
 
 def staged_legacy_moves(root: Path) -> set[str]:
