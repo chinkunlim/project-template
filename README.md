@@ -1,0 +1,133 @@
+# 01 project_template — 新專案母版（v3.1）
+
+執行一個指令，就為新專案建立**統一的資料夾與文件結構**、AI Agent 規則、交接與溯源紀錄、品質檢查與語言範本。適用情境：**同一時間只有一個 AI Agent 在改程式**，不同 Agent（Claude Code、Gemini/Antigravity、Cursor、Windsurf、Copilot、Codex）或不同對話輪流接手。
+
+---
+
+## 1. 建立新專案
+
+在母版資料夾內執行（路徑換成你自己的）
+
+```bash
+python3 init_project.py --target ~/projects/my_app --stack python
+```
+
+Python + 網頁 + GAS
+
+```bash
+python3 init_project.py --target ~/projects/my_app --stack python --with web gas
+```
+
+```bash
+python3 init_project.py --target ~/projects/my_gas --stack gas
+python3 init_project.py --list-skills
+```
+
+| 參數 | 說明 |
+|---|---|
+| `--stack` | 主要語言：`python` / `node` / `gas` / `go` / `rust` / `generic`；`both` = python+web，`all` = python+web+gas |
+| `--with` | 附加：`web`（`web/` 純 HTML+CSS+JS）、`gas`（`gas/` Apps Script + Node 測試 + 專案內 clasp）、`api`（FastAPI，只綁 127.0.0.1）、`db`（SQLAlchemy 2.0 + Alembic + SQLite）、`ollama`（本機模型 client + 硬體檢查 + PromptRegistry + 隔離區）、`evals`（輸出品質評分） |
+| `--timezone` | GAS 時區，預設讀這台電腦（例如 `Asia/Taipei`） |
+| `--license` | `MIT` 會產生 LICENSE（預設不授權） |
+| `--skills` | 額外安裝 optional skills（例如 `legacy-migration`） |
+| `--force` | 允許寫入非空資料夾（預設會拒絕，避免覆蓋既有檔案；此時不會自動 commit） |
+| `--no-git` | 不建立 git repo |
+
+建立後：`cd` 進專案 → `python3 scripts/agentctl.py status`。
+
+### 把舊專案搬進新結構
+
+```bash
+python3 migrate_project.py --from ~/projects/old_app --target ~/projects/old_app_v2
+```
+
+- 舊專案**不會被修改**；新資料夾由舊 repo clone（保留 git 歷史），舊檔案以 `git mv` 放進 `legacy/`，再套用模板。
+- 自動偵測語言（可用 `--stack` / `--with` 指定），產生 `docs/migration/MIGRATION.md`：檔案清單與建議位置、依批次排序的任務卡、`uv add` / `pnpm add` 轉換指令、風險（被追蹤的機密檔等）與完成標準。
+- 之後請 Agent 依 `legacy-migration` skill 逐批搬移；**每一批都要符合新專案的全部規範**（註解、型別、分層、測試、文件、uv/pnpm）。
+- `python3 scripts/agentctl.py migration --verify` 全部通過才算完成（`legacy/` 清空、check 與測試通過、任務全部完成、README 已改寫…）。
+- `--mode maintain`（預設）：舊專案已完工，保留 Flask，只整理結構與規範；`--mode develop`：要繼續開發，Flask 全部改寫成 FastAPI。之後也可用 `agentctl migration --develop` 切換。
+- 舊專案必須先 commit（未 commit 的修改不會搬過去）；不是 git repo 的舊資料夾會改成複製（不含 `.env`、金鑰、`.venv`、`node_modules`）。
+
+---
+
+## 2. 新專案會有什麼
+
+```text
+my_app/
+├── AGENTS.md                 # Agent 規則（唯一來源）+「文件放哪裡」對照表 + Skills 索引 + 資料夾摘要
+├── CLAUDE.md / GEMINI.md     # 各工具入口（自動產生：CLAUDE.md 匯入 AGENTS.md，其他工具複製 AGENTS.md 的規則段落）
+├── README.md  CHANGELOG.md  .env.example  .gitignore
+├── .agents/
+│   ├── project.toml          # 專案設定：分層、測試指令、品質門檻、啟用的 skills
+│   ├── framework.lock        # 框架版本與檔案雜湊（update 時判斷檔案是否被專案修改）
+│   ├── bin/                  # 框架腳本：agent_task, auto_commit, doctor, setup_env, update_framework, ...
+│   ├── hooks/                # 版本控管的 hooks（core.hooksPath）：pre-commit（秘密、資料檔、code-review-guard）、pre-push
+│   ├── handoff/LATEST.md     # 交接看板 + 時間軸
+│   ├── tasks/                # 任務卡
+│   ├── lib/                  # 框架共用函式庫
+│   └── skills/               # core + 依 stack 安裝的 skills（catalog.json）
+├── docs/
+│   ├── adr/                  # 架構決策（DECISIONS.md 總表）
+│   ├── known-issues/         # 已知問題與根因（KNOWN_ISSUES.md 總表）
+│   ├── specs/                # 需求規格
+│   ├── architecture/         # ARCHITECTURE.md + 目錄樹（依賴圖、溯源報告需要時才產生，不進 git）
+│   └── standards/            # 工程規範（含註解規範）
+├── scripts/
+│   └── agentctl.py           # 單一入口：status / task / commit / closeout / check / sync / finish / doctor / update …
+│                             # （scripts/ 其餘留給專案自己的腳本）
+└── src/ tests/ ...           # 語言範本（完整註解、分層、可直接跑測試）
+```
+
+---
+
+## 3. 設計重點
+
+1. **統一結構**：所有專案相同的 `docs/` 骨架與 AGENTS.md「文件放哪裡」對照表。命名規則：只有根目錄一份 `README.md`；每個 docs 資料夾用全大寫的說明/總表檔（`DECISIONS.md`、`KNOWN_ISSUES.md`、`SPECS.md`、`ARCHITECTURE.md`），新增紀錄照同資料夾的 `_TEMPLATE.md`。
+2. **交接與溯源**：
+   - Git trailers（`Agent:` `Model:` `Task:` `Version:`）記錄每個 commit 是誰做的。
+   - 每次對話結束由 `agentctl closeout` 在 `.agents/conversations/` 產生**逐字稿＋摘要**兩個檔案（去除個資、只存本機、不進 git，專案結束可刪除）；交接看板 `LATEST.md`（在 git）保留目標、錯誤根因、下一步各一行。
+   - 任務卡 `history` 記錄經手過程；需要時 `agentctl audit` 彙整成報告。
+   - 版本：commit 只在 `CHANGELOG.md` 的 `## [Unreleased]` 加一行；要發布時 `agentctl finish --tag` 才升版、打本機 tag。
+3. **完整註解**：每個檔案開頭說明、每個函數說明與每個參數（Python `Args:`、JS `@param`、Go `//`、Rust `///`）。`code-review-guard` 與 pre-commit hook 會擋下缺漏；範本程式本身就照規範寫。
+4. **換電腦也能用、不污染主機**：
+   - Python 一律用 uv：`.python-version`（3.11）+ uv 自己下載的直譯器 + `uv.lock` + 專案內 `.venv/`；不用全域 pip。
+   - Node 版本寫在 `.nvmrc`、pnpm 版本寫在 `packageManager`（corepack）；工具（clasp 等）是 devDependencies，裝在專案內 `node_modules/`，用 `pnpm exec` 執行；不用 `npm -g`。
+   - 型別檢查用 mypy（strict），和 ruff 一樣裝在專案 `.venv`。
+   - 主機只需要 git、uv、nvm（Node + corepack pnpm）。hook 納入版本控管；`.claude/skills` 由 `agentctl doctor --fix` 重建；`agentctl setup --install` 一鍵安裝。
+5. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（預設 `~/project-data/<專案>`，可放外接硬碟）；pre-commit 擋下 PDF、壓縮檔、資料庫與超過 10 MB 的檔案。
+6. **Git 安全**：commit 訊息一律英文；pre-push hook 擋下未經同意的 push（`ALLOW_PUSH=1` 才放行）；`agentctl pause` 中途離開、`agentctl finish` 專案完成驗收。
+7. **AGENTS.md**：「使用者說什麼 → 執行什麼」對照表；核心規則包括出示執行證據、與 ADR 衝突要先問、錯誤與決策即時記錄、通用規則回寫模板（`docs/TEMPLATE_FEEDBACK.md`）；專案特有規則寫 `docs/standards/PROJECT_RULES.md`（模板更新不會覆蓋）。
+8. **可擴充、可升級**：Skills 分 core / stack / optional（`skills/catalog.json`）；`agentctl update --from <母版>` 依 `framework.lock` 只更新未被專案修改的檔案，衝突檔另存 `*.template`。
+   - **從 v3.0 升級**：v3.1 把框架腳本從 `scripts/` 搬到 `.agents/bin/`、hooks 搬到 `.agents/hooks/`。`update` 會把舊的 `scripts/*.py` 列為「母版已移除」（不會自動刪除）；接著執行 `python3 scripts/agentctl.py doctor --fix` 切換 hooks，確認後再自行刪除舊檔。
+
+---
+
+## 4. 母版資料夾結構
+
+```text
+01 project_template/
+├── init_project.py           # 新專案產生器
+├── migrate_project.py        # 舊專案遷移（保留歷史、legacy/、MIGRATION.md、批次任務）
+├── lib/                      # → 新專案 .agents/lib/（project_config, framework_install, tree_annotations）
+├── core/scripts/             # → 新專案 .agents/bin/（框架腳本，由 agentctl 呼叫）
+├── core/hooks/               # → 新專案 .agents/hooks/（core.hooksPath）
+├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
+├── tools/                    # 只留在母版：sync_github_skills.py（維護 skills 上游參考時才用）
+├── standards/                # → 新專案 docs/standards/
+├── packs/                    # 語言範本：python_pack / web_pack / gas_pack / other_packs、stack_config（project.toml、.gitignore、CI）、docs_templates
+├── skills/                   # → 新專案 .agents/skills/（依 catalog.json 選擇）
+│   ├── catalog.json          # 每個 skill 的分層、觸發時機、指令
+│   └── skills.lock.json      # 上游參考原始碼（釘選 commit + license；只留在母版）
+├── .skills-cache/            # 上游參考原始碼快取（git 忽略，不會複製到新專案）
+└── tests/test_framework.py   # 框架端對端測試
+```
+
+上游參考原始碼不再放進母版或新專案；需要時：`python3 tools/sync_github_skills.py fetch <name>`。
+
+---
+
+## 5. 驗證框架本身
+
+```bash
+python3 tests/test_framework.py -v
+```
