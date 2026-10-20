@@ -12,7 +12,7 @@ Purpose:
       - `scripts/agentctl.py`                 : the single entry point (the rest of `scripts/` is the project's)
       - `.agents/skills/`                     : core + stack-specific skills (optional ones on request)
       - `.github/workflows/ci.yml`            : CI running the same checks and tests on every push / PR
-      - Language starter code                 : python / node / gas / go / rust / generic
+      - Language starter code                 : python / node / gas / go / rust / generic / mobile (Expo)
       - git repo with a version-controlled pre-commit hook (`core.hooksPath .agents/hooks`)
 
 Usage:
@@ -126,7 +126,7 @@ def build_agents_md(project_name: str, description: str) -> str:
 6. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（專案資料夾之外）；程式透過 config 取得路徑，專案內只放程式、文件和小型測試樣本。
 7. **單向分層**：依 `.agents/project.toml` 的 `[architecture] layers`，上層可依賴下層，反之禁止。
 8. **環境隔離（不污染主機）**：Python 只用 `uv add` / `uv run`，Node 只用 `pnpm add` / `pnpm exec`；禁止 `pip install`、`npm`、`npx`、全域安裝與 `sudo`（見 [`ENVIRONMENT_AND_DEPENDENCIES.md`](docs/standards/ENVIRONMENT_AND_DEPENDENCIES.md)）。
-9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。
+9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。手機 App 預設在 iOS 模擬器 / Android 模擬器測試（`adb reverse` 轉接後端 port）；用真的手機時只用 `expo start --tunnel`，後端不開放到網路（見 `mobile/MOBILE.md`）。
 10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
 11. **通用規則回寫母版**：使用者提出「以後每個專案都要這樣」的規則時，寫進 [`docs/TEMPLATE_FEEDBACK.md`](docs/TEMPLATE_FEEDBACK.md)，由使用者決定是否更新專案模板；只適用本專案的規則寫進 [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
 12. **Log 追蹤**：每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`；執行的開始與結束、外部呼叫、跳過與重試、例外（`logger.exception`）都要記 log，不記秘密與個資。log 在 `DATA_DIR/logs/`，用 run id 追蹤一次執行（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
@@ -516,9 +516,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="建立標準結構的新專案（文件、資料夾、Agent 規則與工具）")
     parser.add_argument("--target", help="新專案資料夾路徑")
     parser.add_argument("--name", default=None, help="專案名稱（預設為資料夾名稱）")
-    parser.add_argument("--stack", choices=STACK_CHOICES, default="python", help="主要語言（預設 python；both = python+web，all = python+web+gas）")
+    parser.add_argument("--stack", choices=STACK_CHOICES, default="python", help="主要語言（預設 python；both = python+web，all = python+web+gas，mobile = 只有手機 App）")
     parser.add_argument("--with", dest="addons", nargs="*", choices=ADDON_CHOICES, default=[],
-                        help="附加：web、gas、api（FastAPI）、db（SQLAlchemy+Alembic+SQLite）、ollama（本機模型＋硬體檢查）、evals（輸出品質評估）")
+                        help="附加：web、gas、mobile（Expo 手機 App，Android+iOS）、api（FastAPI）、db（SQLAlchemy+Alembic+SQLite）、ollama（本機模型＋硬體檢查）、evals（輸出品質評估）")
     parser.add_argument("--timezone", default=None, help="GAS 時區（預設讀取這台電腦，例如 Asia/Taipei）")
     parser.add_argument("--license", default="none", choices=["none", "MIT"], help="授權：MIT 會產生 LICENSE（預設不授權）")
     parser.add_argument("--description", default=DEFAULT_DESCRIPTION, help="一句話專案描述")

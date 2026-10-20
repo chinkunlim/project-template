@@ -5,7 +5,8 @@
 # Purpose:
 #   Blocks a commit when
 #     1. a staged change adds something that looks like a secret (API key, token, private key);
-#     2. a credential file (.env, .clasprc.json, *.pem, *.key) is staged anywhere
+#     2. a credential file (.env, .clasprc.json, *.pem, *.key, app signing keys such as
+#        *.jks / *.keystore / *.p8 / *.p12 / *.mobileprovision) is staged anywhere
 #        (.clasp.json only holds the Apps Script ID and may be committed);
 #     3. a data file (PDF, EPUB, archive, media, database) or a file over 10 MB is staged
 #        (data belongs in DATA_DIR outside the project; see .agents/bin/check_staged.py);
@@ -29,9 +30,9 @@ fi
 
 # 2. Credential files at any depth (.env.example is allowed)
 if git diff --cached --name-only --diff-filter=ACMR \
-    | grep -E '(^|/)(\.env(\..+)?|\.clasprc\.json)$|\.(pem|key)$' \
+    | grep -E '(^|/)(\.env(\..+)?|\.clasprc\.json)$|\.(pem|key|jks|keystore|p8|p12|mobileprovision)$' \
     | grep -vE '(^|/)\.env\.example$' | grep -q .; then
-  echo "❌ [PRE-COMMIT BLOCKED] Credential file (.env / .clasprc.json / *.pem / *.key) is staged."
+  echo "❌ [PRE-COMMIT BLOCKED] Credential or signing file (.env / .clasprc.json / *.pem / *.key / *.jks / *.p12 ...) is staged."
   exit 1
 fi
 

@@ -7,7 +7,7 @@ Purpose:
       - Python: `uv sync` creates the project-local `.venv/` with the uv-managed Python from
         `.python-version` and installs exactly what `uv.lock` says. No global pip, no sudo.
       - Node:   `pnpm install` (pnpm from corepack, version pinned by `packageManager`; Node
-        version from `.nvmrc`) into each folder's own `node_modules/` (root, `gas/`, `web/`);
+        version from `.nvmrc`) into each folder's own `node_modules/` (root, `gas/`, `web/`, `mobile/`);
         tools such as clasp are dev dependencies run with `pnpm exec`.
 
 Commands:
@@ -73,12 +73,12 @@ def install_python() -> int:
 
 
 def node_project_dirs() -> list[Path]:
-    """List folders that contain a `package.json` (root, `gas/`, `web/`).
+    """List folders that contain a `package.json` (root, `gas/`, `web/`, `mobile/`).
 
     Returns:
         Existing Node project folders.
     """
-    return [d for d in (ROOT, ROOT / "gas", ROOT / "web") if (d / "package.json").exists()]
+    return [d for d in (ROOT, ROOT / "gas", ROOT / "web", ROOT / "mobile") if (d / "package.json").exists()]
 
 
 def node_install_command(folder: Path) -> list[str] | None:

@@ -9,6 +9,7 @@ Packs:
     python_pack.py : Python 3.11 via uv (src/<pkg>/..., tests/, CLI, logging, ruff)
     web_pack.py    : `web/` plain HTML + CSS + JS (add-on)
     gas_pack.py    : Google Apps Script with Node tests and project-local clasp (stack or `gas/` add-on)
+    mobile_pack.py : Expo (React Native + TypeScript) app for Android and iOS (`mobile/` add-on)
     other_packs.py : Node.js, Go, Rust, generic
     stack_config.py: stacks/add-ons -> project.toml, .gitignore, .env.example, CI workflow
 """
@@ -21,6 +22,7 @@ from pathlib import Path
 from packs.common import detect_node_toolchain, slugify_package_name, write_file
 from packs.dx_pack import scaffold_dx_files
 from packs.gas_pack import scaffold_gas_pack
+from packs.mobile_pack import scaffold_mobile_pack
 from packs.other_packs import scaffold_generic_pack, scaffold_go_pack, scaffold_node_pack, scaffold_rust_pack
 from packs.python_pack import scaffold_python_pack
 from packs.stack_config import (  # noqa: F401 - re-exported for init_project.py
@@ -49,7 +51,7 @@ def generate_stack_files(target_dir: Path, project_name: str, settings: dict, op
             (`MIT` / `none`), and optional `node` / `pnpm` versions (detected when omitted).
     """
     base, description = settings["base"], options.get("description", "")
-    uses_node = base in ("node", "gas") or "gas" in settings["addons"]
+    uses_node = base in ("node", "gas") or bool({"gas", "mobile"} & set(settings["addons"]))
     toolchain = {**detect_node_toolchain(), **{k: v for k, v in options.items() if k in ("node", "pnpm") and v}} if uses_node else {}
     gas_options = {"timezone": options.get("timezone", "UTC"), "pnpm": toolchain.get("pnpm", "")}
     if uses_node:
@@ -64,12 +66,16 @@ def generate_stack_files(target_dir: Path, project_name: str, settings: dict, op
         scaffold_go_pack(target_dir, project_name)
     elif base == "rust":
         scaffold_rust_pack(target_dir, project_name, description)
+    elif "mobile" in settings["addons"]:
+        write_file(target_dir / "VERSION", "0.1.0\n")  # app-only project: the code lives in mobile/
     else:
         scaffold_generic_pack(target_dir, project_name)
     if "web" in settings["addons"]:
         scaffold_web_pack(target_dir, project_name)
     if "gas" in settings["addons"]:
         scaffold_gas_pack(target_dir / "gas", project_name, description, gas_options)
+    if "mobile" in settings["addons"]:
+        scaffold_mobile_pack(target_dir, project_name, toolchain.get("pnpm", ""))
     if "evals" in settings["addons"]:
         scaffold_evals_pack(target_dir)
     dist = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"

@@ -35,6 +35,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -200,29 +201,75 @@ def cmd_sync() -> int:
     return 0 if all(r == 0 for r in results) else 1
 
 
+def split_commands(command: str) -> list[str]:
+    """Split a shell command on top-level `&&` (parenthesised sub-shells stay whole).
+
+    Args:
+        command: Command such as `uv run mypy && (cd mobile && pnpm exec tsc --noEmit)`.
+
+    Returns:
+        The parts, stripped.
+    """
+    parts, depth, current = [], 0, ""
+    i = 0
+    while i < len(command):
+        ch = command[i]
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if depth == 0 and command.startswith("&&", i):
+            parts.append(current.strip())
+            current, i = "", i + 2
+            continue
+        current += ch
+        i += 1
+    return [p for p in [*parts, current.strip()] if p]
+
+
+def missing_tool_hint(part: str) -> str:
+    """Tell why one command part cannot run yet (its project-local tools are not installed).
+
+    Args:
+        part: One part from `split_commands()`.
+
+    Returns:
+        A hint, or an empty string when the part can run.
+    """
+    if "uv run" in part and not (ROOT / ".venv").exists():
+        return "尚未建立 .venv"
+    folder = re.match(r"\(\s*cd\s+(\S+)\s*&&\s*pnpm\s", part)
+    if folder and not (ROOT / folder.group(1) / "node_modules").exists():
+        return f"尚未安裝 {folder.group(1)}/node_modules"
+    return ""
+
+
 def run_configured(name: str) -> int:
     """Run a `[commands]` entry (`lint`, `typecheck`, `dbcheck`) from `.agents/project.toml`.
 
-    Commands that use `uv run` are skipped (with a hint) until the project `.venv` exists,
-    so `check` never creates environments or downloads tools on its own.
+    Parts whose project-local tools are missing (`uv run` without `.venv`, `(cd x && pnpm ...)`
+    without `x/node_modules`) are skipped with a hint, so `check` never creates environments
+    or downloads tools on its own; the other parts still run.
 
     Args:
         name: Key under `[commands]`.
 
     Returns:
-        The command's exit code (0 when it is not configured or was skipped).
+        The command's exit code (0 when it is not configured or everything was skipped).
     """
     sys.path.insert(0, str(ROOT / ".agents" / "lib"))
     from project_config import load_config  # noqa: E402
 
     command = str(load_config(ROOT)["commands"].get(name, "")).strip()
-    if not command:
+    runnable = []
+    for part in split_commands(command):
+        hint = missing_tool_hint(part)
+        if hint:
+            print(f"ℹ️ 略過 {name}（{part}）：{hint}（先執行 python3 scripts/agentctl.py setup --install）")
+        else:
+            runnable.append(part)
+    if not runnable:
         return 0
-    if "uv run" in command and not (ROOT / ".venv").exists():
-        print(f"ℹ️ 略過 {name}：尚未建立 .venv（先執行 python3 scripts/agentctl.py setup --install）")
-        return 0
-    print(f"$ {command}")
-    return subprocess.run(command, shell=True, cwd=ROOT, check=False).returncode
+    joined = " && ".join(runnable)
+    print(f"$ {joined}")
+    return subprocess.run(joined, shell=True, cwd=ROOT, check=False).returncode
 
 
 def cmd_check(args: list[str] | None = None) -> int:

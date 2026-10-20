@@ -104,8 +104,10 @@ def vscode_files(languages: list[str], pkg: str, dist: str) -> dict[str, str]:
     if "api" in languages:
         configs.append({"name": f"{dist}: API server (127.0.0.1)", "type": "debugpy", "request": "launch",
                         "module": f"{pkg}.entrypoints.http.server", "envFile": "${workspaceFolder}/.env", "console": "integratedTerminal"})
-    if {"node", "gas", "web"} & set(languages):
+    if {"node", "gas", "web", "mobile"} & set(languages):
         extensions.append("dbaeumer.vscode-eslint")
+    if "mobile" in languages:
+        extensions.append("expo.vscode-expo-tools")
     files = {".vscode/settings.json": _json(settings), ".vscode/extensions.json": _json({"recommendations": extensions})}
     if configs:
         files[".vscode/launch.json"] = _json({"version": "0.2.0", "configurations": configs})

@@ -18,6 +18,12 @@ Python + 網頁 + GAS
 python3 init_project.py --target ~/projects/my_app --stack python --with web gas
 ```
 
+手機 App（Android + iOS）＋ Python 後端；只有 App 時用 `--stack mobile`
+
+```bash
+python3 init_project.py --target ~/projects/my_app --stack python --with api mobile
+```
+
 ```bash
 python3 init_project.py --target ~/projects/my_gas --stack gas
 python3 init_project.py --list-skills
@@ -25,8 +31,8 @@ python3 init_project.py --list-skills
 
 | 參數 | 說明 |
 |---|---|
-| `--stack` | 主要語言：`python` / `node` / `gas` / `go` / `rust` / `generic`；`both` = python+web，`all` = python+web+gas |
-| `--with` | 附加：`web`（`web/` 純 HTML+CSS+JS）、`gas`（`gas/` Apps Script + Node 測試 + 專案內 clasp）、`api`（FastAPI，只綁 127.0.0.1）、`db`（SQLAlchemy 2.0 + Alembic + SQLite）、`ollama`（本機模型 client + 硬體檢查 + PromptRegistry + 隔離區）、`evals`（輸出品質評分） |
+| `--stack` | 主要語言：`python` / `node` / `gas` / `go` / `rust` / `generic`；`both` = python+web，`all` = python+web+gas，`mobile` = 只有手機 App |
+| `--with` | 附加：`web`（`web/` 純 HTML+CSS+JS）、`gas`（`gas/` Apps Script + Node 測試 + 專案內 clasp）、`api`（FastAPI，只綁 127.0.0.1）、`db`（SQLAlchemy 2.0 + Alembic + SQLite）、`ollama`（本機模型 client + 硬體檢查 + PromptRegistry + 隔離區）、`evals`（輸出品質評分）、`mobile`（`mobile/` Expo：React Native + TypeScript，Android 與 iOS 共用） |
 | `--timezone` | GAS 時區，預設讀這台電腦（例如 `Asia/Taipei`） |
 | `--license` | `MIT` 會產生 LICENSE（預設不授權） |
 | `--skills` | 額外安裝 optional skills（例如 `legacy-migration`） |
@@ -130,4 +136,14 @@ my_app/
 
 ```bash
 python3 tests/test_framework.py -v
+```
+
+需要網路的實裝測試（預設略過）：用 uv 實際安裝 Python 專案、用 pnpm 實際安裝 Expo 並打包 iOS / Android。
+
+```bash
+TEMPLATE_UV_TESTS=1 python3 tests/test_framework.py UvIntegrationTest
+```
+
+```bash
+TEMPLATE_MOBILE_TESTS=1 python3 tests/test_framework.py MobileIntegrationTest
 ```

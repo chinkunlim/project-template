@@ -164,9 +164,49 @@ class ScaffoldTest(unittest.TestCase):
         scaffold_project(target, "existing", stack="generic", force=True)
         self.assertEqual(run(target, "git", "log", "--oneline").stdout.strip(), "", "no automatic commit into an existing folder")
 
+    def test_mobile_addon_layout_rules_and_offline_tests(self) -> None:
+        """`--with mobile` adds a layered Expo app, its rules, CI, Brewfile, and blocks signing keys; `--stack mobile` is app-only."""
+        target = self.base / "phone"
+        scaffold_project(target, "phone", stack="python", addons=["api", "mobile"])
+        for rel in ("mobile/package.json", "mobile/app.json", "mobile/tsconfig.json", "mobile/index.ts", "mobile/MOBILE.md",
+                    "mobile/.env.example", "mobile/src/config/env.ts", "mobile/src/config/logger.ts", "mobile/src/domain/models.ts",
+                    "mobile/src/services/greeting.ts", "mobile/src/adapters/api.ts", "mobile/src/entrypoints/App.tsx",
+                    "mobile/test/greeting.test.ts", "Brewfile", ".nvmrc"):
+            self.assertTrue((target / rel).exists(), rel)
+        pkg = json.loads((target / "mobile" / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(pkg["scripts"]["tunnel"], "expo start --tunnel")
+        self.assertIn("@expo/ngrok", pkg["devDependencies"], "--tunnel never installs anything globally")
+        self.assertIn("node-linker=hoisted", (target / "mobile" / ".npmrc").read_text(encoding="utf-8"))
+        toml = (target / ".agents" / "project.toml").read_text(encoding="utf-8")
+        self.assertIn('"mobile/src"', toml)
+        self.assertIn("(cd mobile && node --test)", toml)
+        self.assertIn("(cd mobile && pnpm exec tsc --noEmit)", toml)
+        for needle in ("mobile/ios/", "mobile/android/", "*.jks", "*.mobileprovision", "node_modules/"):
+            self.assertIn(needle, (target / ".gitignore").read_text(encoding="utf-8"))
+        ci = (target / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("working-directory: mobile", ci)
+        agents = (target / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("expo start --tunnel", agents)
+        self.assertIn("adb reverse", agents)
+        self.assertEqual(run(target, ".agents/skills/code-review-guard/scripts/review_guard.py").returncode, 0)
+        self.assertEqual(run(target, "scripts/agentctl.py", "graph").returncode, 0)
+        check = run(target, "scripts/agentctl.py", "check")
+        self.assertIn("尚未安裝 mobile/node_modules", check.stdout, "the mobile type check waits for pnpm install")
+        if HAS_NODE:
+            self.assertEqual(run(target / "mobile", "node", "--test").returncode, 0, "TypeScript tests run with no install")
+        (target / "mobile" / "release.jks").write_bytes(b"key")
+        run(target, "git", "add", "-f", "mobile/release.jks")
+        blocked = run(target, "git", "commit", "-m", "chore: key")
+        self.assertNotEqual(blocked.returncode, 0)
+        self.assertIn("signing", blocked.stdout + blocked.stderr)
+        only = self.base / "apponly"
+        scaffold_project(only, "apponly", stack="mobile", init_git_repo=False)
+        self.assertFalse((only / "src").exists(), "app-only project keeps its code in mobile/")
+        self.assertIn('source_roots = ["mobile/src"]', (only / ".agents" / "project.toml").read_text(encoding="utf-8"))
+
     def test_all_stacks_pass_guard_and_graph(self) -> None:
         """Every stack's starter code follows the comment and layer rules."""
-        for stack in ("node", "gas", "go", "rust", "generic", "both", "all"):
+        for stack in ("node", "gas", "go", "rust", "generic", "both", "all", "mobile"):
             target = self.base / f"p_{stack}"
             scaffold_project(target, f"p_{stack}", stack=stack, init_git_repo=False)
             guard = run(target, ".agents/skills/code-review-guard/scripts/review_guard.py")
@@ -901,6 +941,28 @@ class RulesAndSafetyTest(unittest.TestCase):
         report = run(self.root, "scripts/agentctl.py", "finish")
         self.assertEqual(report.returncode, 1, "template README is still untouched")
         self.assertIn("README / ARCHITECTURE", report.stdout)
+
+
+@unittest.skipUnless(os.environ.get("TEMPLATE_MOBILE_TESTS") and shutil.which("pnpm"), "set TEMPLATE_MOBILE_TESTS=1 (needs pnpm + network, ~300 MB)")
+class MobileIntegrationTest(unittest.TestCase):
+    """Real Expo flow: pnpm install in mobile/, type check, SDK version check, iOS + Android bundles."""
+
+    def test_expo_flow(self) -> None:
+        """A fresh `--stack mobile` project installs locally, type-checks, matches the SDK and bundles for both phones."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "phoneapp"
+            scaffold_project(target, "phoneapp", stack="mobile")
+            self.assertEqual(run(target, ".agents/bin/setup_env.py", "--install").returncode, 0)
+            self.assertTrue((target / "mobile" / "node_modules" / ".bin" / "expo").exists(), "expo CLI is project-local")
+            check = run(target, "scripts/agentctl.py", "check")
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+            mobile = target / "mobile"
+            self.assertIn("up to date", run(mobile, "pnpm", "exec", "expo", "install", "--check").stdout)
+            for platform in ("ios", "android"):
+                out = run(mobile, "pnpm", "exec", "expo", "export", "--platform", platform, "--output-dir", str(Path(tmp) / platform),
+                          env={"CI": "1"})
+                self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+                self.assertTrue(list((Path(tmp) / platform).rglob("*.hbc")), f"{platform} bundle")
 
 
 @unittest.skipUnless(os.environ.get("TEMPLATE_UV_TESTS") and shutil.which("uv"), "set TEMPLATE_UV_TESTS=1 (needs uv + network)")

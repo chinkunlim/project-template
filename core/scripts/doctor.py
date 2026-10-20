@@ -228,7 +228,7 @@ def check_node_env() -> list[tuple[str, str]]:
     Returns:
         List of `(status, message)` results.
     """
-    folders = [d for d in (ROOT, ROOT / "gas", ROOT / "web") if (d / "package.json").exists()]
+    folders = [d for d in (ROOT, ROOT / "gas", ROOT / "web", ROOT / "mobile") if (d / "package.json").exists()]
     if not folders:
         return []
     results = [check_node_version(), check_pnpm()]
@@ -238,6 +238,32 @@ def check_node_env() -> list[tuple[str, str]]:
             results.append(("WARN", f"{name}: 尚未安裝 node_modules（執行 python3 scripts/agentctl.py setup --install）"))
         if (folder / "appsscript.json").exists() and not (folder / ".clasp.json").exists():
             results.append(("WARN", f"{name}: 缺少 .clasp.json（pnpm exec clasp login 後，cp .clasp.json.example .clasp.json 並填入指令碼 ID）"))
+    return results
+
+
+def check_mobile_tools() -> list[tuple[str, str]]:
+    """Check the simulators an Expo app in `mobile/` needs (read-only; never installs).
+
+    Returns:
+        List of `(status, message)` results (empty when the project has no mobile app).
+    """
+    if not (ROOT / "mobile" / "app.json").exists():
+        return []
+    results = []
+    xcode = tool_output("xcode-select", "-p")
+    has_simctl = subprocess.run(["xcrun", "simctl", "help"], capture_output=True, check=False).returncode == 0
+    if has_simctl:
+        results.append(("OK", f"iOS Simulator 可用（{xcode}）"))
+    else:
+        results.append(("WARN", "沒有 iOS Simulator：從 App Store 安裝 Xcode，打開一次同意授權，"
+                                "再執行 sudo xcode-select -s /Applications/Xcode.app（需要你自己輸入密碼）"))
+    sdk = Path(os.environ.get("ANDROID_HOME", "") or Path.home() / "Library" / "Android" / "sdk")
+    if shutil.which("adb") or (sdk / "platform-tools" / "adb").exists():
+        results.append(("OK", f"Android SDK 可用（{sdk}）"))
+    else:
+        results.append(("WARN", "沒有 Android SDK：brew bundle --file Brewfile 安裝 Android Studio，打開後用 Device Manager 建立模擬器"))
+    if not (ROOT / "mobile" / ".env").exists() and (ROOT / "mobile" / ".env.example").exists():
+        results.append(("WARN", "mobile/.env 不存在：cp mobile/.env.example mobile/.env（EXPO_PUBLIC_* 會打包進 App，不放秘密）"))
     return results
 
 
@@ -329,7 +355,7 @@ def check_toolchain() -> list[tuple[str, str]]:
     Returns:
         List of `(status, message)` results.
     """
-    results = [*check_python_env(), *check_node_env()]
+    results = [*check_python_env(), *check_node_env(), *check_mobile_tools()]
     results.append(check_brewfile())
     for marker, tool, hint in (("go.mod", "go", "需要 Go"), ("Cargo.toml", "cargo", "需要 Rust (cargo)")):
         if (ROOT / marker).exists():

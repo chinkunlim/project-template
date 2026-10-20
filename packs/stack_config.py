@@ -9,9 +9,10 @@ Purpose:
 Stacks and add-ons:
     Base stacks : python | node | gas | go | rust | generic
     Add-ons     : web (plain HTML/CSS/JS in `web/`) | gas (Apps Script in `gas/`)
+                  mobile (Expo: React Native + TypeScript app for Android and iOS in `mobile/`)
                   api (FastAPI, Python only) | db (SQLAlchemy + Alembic + SQLite, Python only)
                   ollama (local LLM client + hardware guard, Python only) | evals (output-quality scoring)
-    Aliases     : both = python + web,  all = python + web + gas
+    Aliases     : both = python + web,  all = python + web + gas,  mobile = generic + mobile
 
 Environment isolation:
     Python always runs through uv (`uv run`, `uv sync`) with a uv-managed interpreter and a
@@ -27,11 +28,12 @@ import re
 from packs.common import slugify_package_name
 from packs.db_pack import DB_CHECK
 from packs.evals_pack import EVALS_COMMAND
+from packs.mobile_pack import MOBILE_TEST, MOBILE_TYPECHECK
 
-STACK_CHOICES = ("python", "node", "gas", "go", "rust", "generic", "both", "all")
-ADDON_CHOICES = ("web", "gas", "api", "db", "ollama", "evals")
+STACK_CHOICES = ("python", "node", "gas", "go", "rust", "generic", "both", "all", "mobile")
+ADDON_CHOICES = ("web", "gas", "mobile", "api", "db", "ollama", "evals")
 PYTHON_ONLY_ADDONS = ("api", "db", "ollama")
-ALIASES = {"both": ("python", ["web"]), "all": ("python", ["web", "gas"])}
+ALIASES = {"both": ("python", ["web"]), "all": ("python", ["web", "gas"]), "mobile": ("generic", ["mobile"])}
 DEFAULT_LAYERS = ["entrypoints", "adapters", "services", "domain", "config"]
 UV_TEST = "uv run python -m unittest discover -s tests -v"
 UV_LINT = "uv run ruff check . && uv run ruff format --check ."
@@ -133,10 +135,15 @@ def project_settings(project_name: str, stack: str, addons: list[str] | None = N
         roots.append("gas/src")
         test = _join(test, "(cd gas && node --test)")
         lint = _join(lint, "node gas/dev/build.js --check")
+    typecheck = UV_TYPECHECK if base == "python" else ""
+    if "mobile" in extra:
+        roots = [r for r in roots if not (base == "generic" and r == "src")] + ["mobile/src"]
+        test = _join(test, MOBILE_TEST)
+        typecheck = _join(typecheck, MOBILE_TYPECHECK)
     return {
         "base": base, "addons": extra, "languages": [base, *extra], "source_roots": roots, "layers": layers,
         "test": test, "lint": lint, "version_files": versions,
-        "typecheck": UV_TYPECHECK if base == "python" else "",
+        "typecheck": typecheck,
         "forbidden_imports": [FLASK_RULE] if base == "python" else [],
         "dbcheck": DB_CHECK if "db" in extra else "",
         "evals": (EVALS_COMMAND if base == "python" else "python3 evals/run_evals.py") if "evals" in extra else "",
@@ -281,8 +288,15 @@ def build_gitignore(languages: list[str]) -> str:
         "# === Data never lives in the project: use DATA_DIR (see .env.example) ===",
         "/data/", "/input/", "/output/", "*.db", "*.sqlite", "*.sqlite3", "*.db-journal",
     ]
-    if any(lang in languages for lang in ("node", "gas")):
+    if any(lang in languages for lang in ("node", "gas", "mobile")):
         lines += ["", "# === Node.js (project-local node_modules; commit pnpm-lock.yaml and .nvmrc) ===", "node_modules/", "npm-debug.log*", "coverage/"]
+    if "mobile" in languages:
+        lines += [
+            "", "# === Mobile (Expo) — generated native folders, caches and signing files ===",
+            "mobile/.expo/", "mobile/dist/", "mobile/web-build/", "mobile/expo-env.d.ts", "mobile/ios/", "mobile/android/",
+            "*.tsbuildinfo", ".metro-health-check*",
+            "*.jks", "*.keystore", "*.p8", "*.p12", "*.mobileprovision",
+        ]
     if "go" in languages:
         lines += ["", "# === Go ===", "bin/", "*.exe", "*.test", "*.out"]
     if "rust" in languages:
@@ -322,6 +336,8 @@ def build_env_example(project_name: str, languages: list[str]) -> str:
         lines += ["", "# Database: empty = SQLite at <DATA_DIR>/db/app.db; PostgreSQL: postgresql+psycopg://user@127.0.0.1:5432/dbname", "DATABASE_URL="]
     if "gas" in languages:
         lines += ["", "# Google Apps Script / webhook", "WEBHOOK_SECRET=", "GAS_WEB_APP_URL="]
+    if "mobile" in languages:
+        lines += ["", "# Mobile app settings live in mobile/.env (EXPO_PUBLIC_* are bundled into the app: no secrets)"]
     return "\n".join(lines) + "\n"
 
 
@@ -344,19 +360,22 @@ def _ci_setup_steps(settings: dict) -> list[str]:
             "      - name: Install Python dependencies (.venv)",
             "        run: if [ -f uv.lock ]; then uv sync --locked; else uv sync; fi",
         ]
-    if settings["base"] in ("node", "gas") or "gas" in langs:
-        folder = "gas" if "gas" in settings["addons"] else "."
+    folders = (["."] if settings["base"] in ("node", "gas") else []) + [a for a in ("gas", "mobile") if a in settings["addons"]]
+    if folders:
         steps += [
             "      - uses: pnpm/action-setup@v4  # pnpm version from package.json `packageManager`",
             "        with:",
-            f"          package_json_file: {folder}/package.json",
+            f"          package_json_file: {folders[0]}/package.json",
             "      - uses: actions/setup-node@v4",
             "        with:",
             "          node-version-file: .nvmrc",
-            "      - name: Install Node dependencies (node_modules)",
-            f"        working-directory: {folder}",
-            "        run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi",
         ]
+        for folder in folders:
+            steps += [
+                f"      - name: Install Node dependencies ({folder}/node_modules)",
+                f"        working-directory: {folder}",
+                "        run: if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi",
+            ]
     if settings["base"] == "go":
         steps += ["      - uses: actions/setup-go@v5", "        with:", '          go-version: "1.21"']
     if settings["base"] == "rust":

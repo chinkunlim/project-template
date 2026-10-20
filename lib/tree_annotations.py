@@ -69,6 +69,10 @@ ANNOTATIONS: dict[str, str] = {
     "legacy": "[遷移中] 舊專案原始檔，逐批搬到新結構後刪除（見 docs/migration/MIGRATION.md）",
     "docs/migration": "[遷移紀錄] 舊專案搬移清單、批次與完成標準",
     # --- Scripts ---
+    "mobile": "【手機 App】Expo (React Native + TypeScript)，Android 與 iOS 共用；說明見 mobile/MOBILE.md",
+    "mobile/src": "App 原始碼：config → domain → services → adapters → entrypoints（畫面）",
+    "mobile/test": "App 單元測試（node --test 直接執行 TypeScript）",
+    "Brewfile": "[系統工具清單] brew bundle --file Brewfile 安裝；agentctl doctor 檢查",
     "scripts": "【專案腳本】agentctl.py 是框架的單一入口；其餘放本專案自己的腳本",
     "scripts/agentctl.py": "[單一入口] 轉呼叫 .agents/bin/agentctl.py",
     ".agents/bin": "[框架腳本] commit、任務、收尾、doctor、update…（由 agentctl 呼叫）",

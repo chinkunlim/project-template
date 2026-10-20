@@ -24,6 +24,7 @@
 | 啟用 pnpm | `corepack enable`（版本由 `packageManager` 決定） | `npm install -g pnpm`、`pnpm setup` |
 | 系統工具（ffmpeg、libpq…） | 寫進專案的 `Brewfile`，`brew bundle` 安裝 | 不記錄就 `brew install` |
 | 本機服務 | 綁 `127.0.0.1`，網址 `http://127.0.0.1:<port>` | 綁 `0.0.0.0`、網址寫 `localhost` |
+| 手機 App 測試 | 模擬器（Android 用 `adb reverse`）；實機用 `pnpm tunnel` | `expo start --lan`、後端綁 `0.0.0.0` |
 
 任何 `sudo` 指令、改動家目錄設定檔（`~/.zshrc`、`~/.zprofile`）、或全域安裝，Agent 都必須先徵求使用者同意。
 
@@ -130,6 +131,13 @@ brew bundle --file Brewfile
 2. 設定檔和程式中的網址寫 `http://127.0.0.1:<port>`，不要寫 `localhost`（macOS 偶發名稱解析失敗）。
 3. 本機 Ollama：`OLLAMA_BASE_URL=http://127.0.0.1:11434`（寫在 `.env`，由 config 層讀取）。
 4. 上傳到本機模型或外部服務的內容一律視為不可信任；含金鑰、個資或私有原始碼的內容不要送到外部服務。
+5. **手機 App（Expo，`--with mobile`）**：手機連不到 Mac 的 `127.0.0.1`，所以：
+   - **預設在模擬器測試**：iOS Simulator 直接用 `127.0.0.1` 連 Mac；Android 模擬器先執行 `adb reverse tcp:<port> tcp:<port>`，App 裡一樣寫 `http://127.0.0.1:<port>`。
+   - **真的手機只用 tunnel**：`pnpm tunnel`（= `expo start --tunnel`，`@expo/ngrok` 是 `mobile/` 的 devDependency，不全域安裝）。tunnel 只轉送 App 程式碼；需要後端的功能在模擬器測試。
+   - **禁止**為了手機把開發伺服器或後端改綁 `0.0.0.0` 或用 `--lan`；真的需要實機連後端時先問使用者。
+   - 系統工具：Xcode 從 App Store 安裝；Android Studio、watchman 寫在 `Brewfile`（`brew bundle --file Brewfile`）。
+   - `mobile/pnpm-workspace.yaml`：pnpm 對「剛發布的套件」寫入的版本例外，要 commit；新增的例外要確認是官方套件。
+   - `EXPO_PUBLIC_*` 變數會打包進 App，不放任何秘密；簽章檔（`*.jks`、`*.p8`、`*.p12`、`*.mobileprovision`）放 `~/.config/<專案>/`，pre-commit 會擋。
 
 ---
 
