@@ -1007,6 +1007,27 @@ def venv_version(root: Path) -> str:
     return next((ln.split("=", 1)[1].strip() for ln in lines if ln.split("=")[0].strip() in ("version_info", "version")), "")
 
 
+class CollectFeedbackTest(unittest.TestCase):
+    """tools/collect_feedback.py gathers open suggestions from every project without changing them."""
+
+    def test_collects_open_suggestions_read_only(self) -> None:
+        """Open rows (empty or 待決定) are listed oldest first; adopted rows only with --all; files stay unchanged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            for rel, rows in (("books", ["| 2026-10-21 | run 指令 | 對話 | 待決定 |", "| 2026-10-22 | 頁數 \\| 耗時 | TASK-4 | 已採用 |"]),
+                              ("group/phone", ["| 2026-10-20 | 離線模式 | 對話 |  |"])):
+                scaffold_project(base / rel, rel.split("/")[-1], stack="generic", init_git_repo=False)
+                feedback = base / rel / "docs" / "TEMPLATE_FEEDBACK.md"
+                feedback.write_text(feedback.read_text(encoding="utf-8") + "\n".join(rows) + "\n", encoding="utf-8")
+            before = (base / "books" / "docs" / "TEMPLATE_FEEDBACK.md").read_text(encoding="utf-8")
+            out = run(TEMPLATE_ROOT, "tools/collect_feedback.py", str(base)).stdout
+            self.assertIn("掃描 2 個專案，共 2 條", out)
+            self.assertLess(out.index("離線模式"), out.index("run 指令"), "oldest first")
+            self.assertNotIn("頁數", out)
+            self.assertIn("頁數 \\| 耗時", run(TEMPLATE_ROOT, "tools/collect_feedback.py", str(base), "--all").stdout)
+            self.assertEqual((base / "books" / "docs" / "TEMPLATE_FEEDBACK.md").read_text(encoding="utf-8"), before)
+
+
 class GuardTest(unittest.TestCase):
     """Comment-rule detection in code-review-guard."""
 

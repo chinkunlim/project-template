@@ -155,7 +155,13 @@ my_app/
 
 ## 4. 維護母版
 
-1. 使用時發現「以後每個專案都要這樣」的規則，Agent 會記在該專案的 `docs/TEMPLATE_FEEDBACK.md`；累積一些後回到母版一起修改。
+1. 使用時發現「以後每個專案都要這樣」的規則，Agent 會記在該專案的 `docs/TEMPLATE_FEEDBACK.md`（每個專案各一份）。累積一些後，在母版一次列出所有專案中「待決定」的建議（只讀，不修改專案；`--all` 連已決定的也列出，`--out <檔名>` 存成檔案）：
+
+```bash
+python3 tools/collect_feedback.py
+```
+
+   決定後到各專案的檔案把狀態改成 `已採用` 或 `不採用`。
 2. 改完母版，跑測試（見第 6 節），再 commit 母版。
 3. 讓既有專案拿到新版框架（被專案改過的檔案不會覆蓋，另存 `*.template`）：
 
@@ -175,7 +181,7 @@ python3 scripts/agentctl.py update --from "$HOME/Desktop/project/01 project_temp
 ├── core/scripts/             # → 新專案 .agents/bin/（框架腳本，由 agentctl 呼叫）
 ├── core/hooks/               # → 新專案 .agents/hooks/（core.hooksPath）
 ├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
-├── tools/                    # 只留在母版：sync_github_skills.py（維護 skills 上游參考時才用）
+├── tools/                    # 只留在母版：collect_feedback.py（彙整各專案的改進建議）、sync_github_skills.py
 ├── standards/                # → 新專案 docs/standards/
 ├── packs/                    # 語言範本：python / api / db / ollama / evals / web / gas / mobile / other_packs、stack_config（project.toml、.gitignore、CI）、migration_plan、docs_templates
 ├── skills/                   # → 新專案 .agents/skills/（依 catalog.json 選擇）
