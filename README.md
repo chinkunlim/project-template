@@ -163,7 +163,19 @@ python3 tools/collect_feedback.py
 
    決定後到各專案的檔案把狀態改成 `已採用` 或 `不採用`。
 2. 改完母版，跑測試（見第 6 節），再 commit 母版。
-3. 讓既有專案拿到新版框架（被專案改過的檔案不會覆蓋，另存 `*.template`）：
+3. 讓既有專案拿到新版框架（被專案改過的檔案不會覆蓋，另存 `*.template`）。一次處理所有專案，先預覽：
+
+```bash
+python3 tools/update_all.py
+```
+
+   確認後再更新（會再問一次）。乾淨、沒有衝突且 `check` 通過的專案會自動本機 commit；有衝突或沒通過的保留變更讓你檢查；有未 commit 修改的專案會略過。母版本身要先 commit。
+
+```bash
+python3 tools/update_all.py --apply
+```
+
+   只更新單一專案時，在該專案內執行：
 
 ```bash
 python3 scripts/agentctl.py update --from "$HOME/Desktop/project/01 project_template"
@@ -181,7 +193,7 @@ python3 scripts/agentctl.py update --from "$HOME/Desktop/project/01 project_temp
 ├── core/scripts/             # → 新專案 .agents/bin/（框架腳本，由 agentctl 呼叫）
 ├── core/hooks/               # → 新專案 .agents/hooks/（core.hooksPath）
 ├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
-├── tools/                    # 只留在母版：collect_feedback.py（彙整各專案的改進建議）、sync_github_skills.py
+├── tools/                    # 只留在母版：collect_feedback.py（彙整改進建議）、update_all.py（一次更新所有專案）、sync_github_skills.py
 ├── standards/                # → 新專案 docs/standards/
 ├── packs/                    # 語言範本：python / api / db / ollama / evals / web / gas / mobile / other_packs、stack_config（project.toml、.gitignore、CI）、migration_plan、docs_templates
 ├── skills/                   # → 新專案 .agents/skills/（依 catalog.json 選擇）

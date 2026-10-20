@@ -1028,6 +1028,50 @@ class CollectFeedbackTest(unittest.TestCase):
             self.assertEqual((base / "books" / "docs" / "TEMPLATE_FEEDBACK.md").read_text(encoding="utf-8"), before)
 
 
+class UpdateAllTest(unittest.TestCase):
+    """tools/update_all.py previews by default and updates only clean, conflict-free projects."""
+
+    def test_preview_then_apply(self) -> None:
+        """Preview changes nothing; --apply commits clean projects, leaves conflicts uncommitted, skips dirty ones."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            tpl = base / "tpl"
+            shutil.copytree(TEMPLATE_ROOT, tpl, ignore=shutil.ignore_patterns(".git", ".skills-cache", "__pycache__"))
+            git_env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+            run(tpl, "git", "init", "-q", "-b", "main")
+            run(tpl, "git", "add", "-A")
+            run(tpl, "git", "commit", "-qm", "template", env=git_env)
+            for name in ("alpha", "beta", "gamma"):
+                res = run(tpl, "init_project.py", "--target", str(base / "projects" / name), "--stack", "generic")
+                self.assertEqual(res.returncode, 0, res.stderr)
+            doctor = tpl / "core" / "scripts" / "doctor.py"
+            doctor.write_text(doctor.read_text(encoding="utf-8") + "\n# template improvement\n", encoding="utf-8")
+            run(tpl, "git", "commit", "-qam", "improve", env=git_env)
+            beta_doctor = base / "projects" / "beta" / ".agents" / "bin" / "doctor.py"
+            beta_doctor.write_text(beta_doctor.read_text(encoding="utf-8") + "\n# beta tweak\n", encoding="utf-8")
+            run(base / "projects" / "beta", "git", "commit", "-qam", "chore: tweak", "--no-verify")
+            (base / "projects" / "gamma" / "notes.txt").write_text("draft\n", encoding="utf-8")
+            heads = {n: run(base / "projects" / n, "git", "rev-parse", "HEAD").stdout for n in ("alpha", "beta", "gamma")}
+
+            preview = run(tpl, "tools/update_all.py", str(base / "projects"))
+            self.assertEqual(preview.returncode, 0, preview.stderr)
+            self.assertIn("可更新（有衝突", preview.stdout)
+            self.assertIn("略過：有未 commit", preview.stdout)
+            self.assertEqual(run(base / "projects" / "alpha", "git", "rev-parse", "HEAD").stdout, heads["alpha"], "preview changes nothing")
+
+            run(tpl, "tools/update_all.py", str(base / "projects"), "--apply", "--yes")
+            alpha = base / "projects" / "alpha"
+            self.assertIn("chore(framework): update to v", run(alpha, "git", "log", "-1", "--pretty=%s").stdout)
+            self.assertEqual(run(alpha, "git", "status", "--porcelain").stdout.strip(), "")
+            self.assertIn("# template improvement", (alpha / ".agents" / "bin" / "doctor.py").read_text(encoding="utf-8"))
+            self.assertIn("# beta tweak", beta_doctor.read_text(encoding="utf-8"), "project edits are never overwritten")
+            self.assertTrue(beta_doctor.with_name("doctor.py.template").exists())
+            self.assertEqual(run(base / "projects" / "beta", "git", "rev-parse", "HEAD").stdout, heads["beta"], "conflicts are not committed")
+            self.assertEqual(run(base / "projects" / "gamma", "git", "rev-parse", "HEAD").stdout, heads["gamma"])
+            (tpl / "scratch.txt").write_text("x", encoding="utf-8")
+            self.assertEqual(run(tpl, "tools/update_all.py", str(base / "projects")).returncode, 1, "dirty template is refused")
+
+
 class GuardTest(unittest.TestCase):
     """Comment-rule detection in code-review-guard."""
 
