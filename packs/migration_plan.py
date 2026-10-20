@@ -26,7 +26,7 @@ BATCH_ORDER = (
 BATCH_TITLES = {
     "deps": "依賴與設定檔轉換（uv / pnpm / .env.example / Brewfile）",
     "config": "config 層（設定、環境變數讀取）",
-    "db": "資料庫（SQLAlchemy 模型 → adapters/db、Alembic 遷移 → alembic/versions、SQLite → data/）",
+    "db": "資料庫（SQLAlchemy 模型 → adapters/db、Alembic 遷移 → alembic/versions、SQLite → DATA_DIR/db/）",
     "domain": "domain 層（資料模型、純邏輯）",
     "adapters": "adapters 層（外部 API、資料庫、檔案 I/O）",
     "services": "services 層（業務流程）",
@@ -42,13 +42,46 @@ LAYER_KEYWORDS = (
     ("config", ("config", "settings", "setting", "env", "constants", "const")),
     ("domain", ("model", "models", "schema", "schemas", "entity", "entities", "types", "dto", "domain")),
     ("adapters", ("api", "client", "clients", "adapter", "adapters", "db", "database", "repository", "repo",
-                  "storage", "store", "http", "gateway", "provider", "crud", "dao")),
+                  "storage", "store", "http", "gateway", "provider", "crud", "dao", "hardware", "hw", "driver",
+                  "drivers", "device", "devices", "display", "sensor", "sensors", "serial", "gpio", "i2c", "spi",
+                  "uart", "mqtt", "ble", "bluetooth", "camera", "mail", "email", "sheets", "drive")),
     ("entrypoints", ("main", "cli", "app", "server", "routes", "route", "router", "views", "handler", "handlers",
                      "bot", "manage", "run", "wsgi", "asgi", "__main__")),
 )
 DEP_FILES = {"requirements.txt", "requirements-dev.txt", "requirements_dev.txt", "pyproject.toml", "setup.py", "setup.cfg",
              "Pipfile", "Pipfile.lock", "poetry.lock", "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
              ".env.example", "Brewfile", ".python-version", ".nvmrc", ".gitignore", ".clasp.json", "appsscript.json"}
+# Imports that mean "talks to the outside world" -> adapters, whatever the file is called
+IO_IMPORT_RE = re.compile(
+    r"^\s*(?:import|from)\s+(machine|serial|smbus2?|spidev|RPi|gpiozero|framebuf|requests|httpx|aiohttp|urllib|socket"
+    r"|sqlite3|paho|boto3|googleapiclient|gspread|smtplib|imaplib|ftplib)\b",
+    flags=re.M,
+)
+# Old documents with a fixed home in the new structure (matched on the upper-case file stem)
+DOC_TARGETS = (
+    (("DECISIONS", "ADR", "ADRS"), "docs/adr/（每個決策拆成一個 NNN-*.md，用 adr-issue-tracker）"),
+    (("KNOWN_ISSUES", "ISSUES", "BUGS", "TROUBLESHOOTING", "FAQ"), "docs/known-issues/（每個問題一個 NNN-*.md）"),
+    (("CHANGELOG", "HISTORY", "CHANGES"), "CHANGELOG.md（舊版本紀錄貼在 0.1.0 下方，保留原日期）"),
+    (("AGENTS", "CLAUDE", "GEMINI", "CONTRIBUTING", "WORKFLOW", "WORKFLOW_GUIDE", "CONVENTIONS"),
+     "docs/standards/PROJECT_RULES.md（只留本專案特有的規則；通用規則已在 AGENTS.md / standards）"),
+    (("ARCHITECTURE", "DESIGN", "OVERVIEW"), "docs/architecture/ARCHITECTURE.md"),
+    (("SPEC", "SPECS", "PRD", "REQUIREMENTS", "API"), "docs/specs/"),
+    (("SECURITY",), "README.md 的安全說明，或 docs/standards/PROJECT_RULES.md"),
+    (("README",), "README.md（改寫成新專案的說明）"),
+)
+# Tool / repo config files: the new project generates its own; keep only what is project-specific
+CONFIG_TARGETS = (
+    ((".cursorrules", ".windsurfrules", "copilot-instructions.md"),
+     "docs/standards/PROJECT_RULES.md（只留本專案特有的規則；各工具入口檔由 agentctl sync 產生）"),
+    (("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"), "LICENSE（保留原授權）"),
+    (("Makefile", "justfile", "Taskfile.yml"), "改用 agentctl / uv run / pnpm 指令，寫進 README；仍需要的腳本放 scripts/"),
+)
+CONFIG_DIR_TARGETS = {
+    ".vscode": "比對模板產生的 .vscode/，只保留本專案特有的 launch / settings",
+    ".github/workflows": "比對模板產生的 .github/workflows/ci.yml，只併入本專案特有的步驟",
+    ".devcontainer": "依需要保留；環境以 uv / pnpm / Brewfile 為準",
+}
+CONVERSATION_DIRS = {"conversations", "conversation", "sessions", "transcripts", "chats", "chat_logs"}
 SECRET_NAMES = re.compile(r"(^|/)(\.env(\..+)?|\.clasprc\.json|credentials\.json|service-account.*\.json|.*\.(pem|key|p12))$")
 WEB_EXTS = {".html", ".htm", ".css", ".scss"}
 LARGE_FILE_BYTES = 5 * 1024 * 1024
@@ -169,6 +202,8 @@ def _classify_python(rel: str, words: list[str], text: str, ctx: PlanContext) ->
             return Entry(legacy, "flask", f"src/{ctx.pkg}/entrypoints/http/（改寫成 FastAPI）")
         return Entry(legacy, "entrypoints", f"src/{ctx.pkg}/entrypoints/http/（保留 Flask）")
     layer = _layer_for(words)
+    if layer == "services" and IO_IMPORT_RE.search(text):
+        layer = "adapters"  # hardware, network, database or file-service I/O
     return Entry(legacy, layer, f"src/{ctx.pkg}/{layer}/")
 
 
@@ -217,7 +252,7 @@ def classify(rel: str, ctx: PlanContext, text: str = "") -> Entry:
     if {"alembic", "migrations"} & set(path.parts) or name == "alembic.ini":
         return Entry(legacy, "db", "alembic/versions/（保留舊的 revision，取代範例 0001）")
     if suffix in DB_FILE_EXTS:
-        return Entry(legacy, "db", "data/（資料檔不進 git）")
+        return Entry(legacy, "db", "DATA_DIR/db/（資料檔不進 git，見 §4.5）")
     if "test" in words or "tests" in words or re.match(r"(test_.*|.*_test)\.py$|.*\.(test|spec)\.[cm]?[jt]sx?$", name):
         return Entry(legacy, "tests", "tests/" if suffix == ".py" else "test/")
     if suffix == ".py":
@@ -225,11 +260,57 @@ def classify(rel: str, ctx: PlanContext, text: str = "") -> Entry:
     frontend = _classify_frontend(rel, path, ctx)
     if frontend:
         return frontend
-    if suffix in (".md", ".rst", ".txt") and path.parent == PurePosixPath("."):
+    config_file = _classify_config(legacy, path)
+    if config_file:
+        return config_file
+    if suffix in (".md", ".rst", ".txt"):
+        return _classify_doc(legacy, path)
+    return Entry(legacy, "other", "依用途判斷（資料 → DATA_DIR，靜態資源 → web/ 或 src/<pkg>/）")
+
+
+def _classify_config(legacy: str, path: PurePosixPath) -> Entry | None:
+    """Suggest what to do with tool and repository config files.
+
+    Args:
+        legacy: Path inside the new project (`legacy/...`).
+        path: Path relative to `legacy/`.
+
+    Returns:
+        An entry for known config files, otherwise None.
+    """
+    for names, target in CONFIG_TARGETS:
+        if path.name in names:
+            return Entry(legacy, "other", target)
+    for folder, target in CONFIG_DIR_TARGETS.items():
+        if path.as_posix().startswith(folder + "/"):
+            return Entry(legacy, "other", target)
+    return None
+
+
+def _classify_doc(legacy: str, path: PurePosixPath) -> Entry:
+    """Suggest where an old document goes in the new docs structure.
+
+    Args:
+        legacy: Path inside the new project (`legacy/...`).
+        path: Path relative to `legacy/`.
+
+    Returns:
+        The file's batch and suggested target.
+    """
+    if CONVERSATION_DIRS & {part.lower() for part in path.parts[:-1]}:
+        return Entry(legacy, "docs", "決策 → docs/adr/、錯誤根因 → docs/known-issues/；原檔移到 .agents/conversations/（只存本機，不進 git）")
+    stem = path.stem.upper().replace("-", "_").replace(" ", "_")
+    if stem == "README" and path.parent != PurePosixPath("."):
+        folder = path.parent.name
+        return Entry(legacy, "docs", f"{path.parent.as_posix()}/{folder.upper()}.md（全專案只有根目錄一份 README）")
+    if stem == "PROMPT_TEMPLATES" or stem == "PROMPTS":
+        return Entry(legacy, "docs", "docs/PROMPT_TEMPLATES.md")
+    for stems, target in DOC_TARGETS:
+        if stem in stems:
+            return Entry(legacy, "docs", target)
+    if path.parent == PurePosixPath("."):
         return Entry(legacy, "docs", "README.md / docs/specs/ / docs/architecture/ARCHITECTURE.md")
-    if suffix in (".md", ".rst"):
-        return Entry(legacy, "docs", "docs/specs/ 或 docs/adr/ 或 docs/known-issues/")
-    return Entry(legacy, "other", "依用途判斷（資料 → data/，靜態資源 → web/ 或 src/<pkg>/）")
+    return Entry(legacy, "docs", "docs/specs/ 或 docs/adr/ 或 docs/known-issues/")
 
 
 def requirements_specs(text: str) -> list[str]:

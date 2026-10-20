@@ -619,6 +619,26 @@ class MigrationTest(unittest.TestCase):
         self.assertIn("遷移批次", run(self.new, ".agents/bin/agent_task.py", "list").stdout)
         self.assertEqual(run(self.new, "scripts/agentctl.py", "check").returncode, 0, "legacy/ does not break the checks")
 
+    def test_plan_suggests_concrete_targets(self) -> None:
+        """Real-world files get a fitting target: I/O code → adapters, known docs → their folder, data → DATA_DIR."""
+        from packs.migration_plan import PlanContext, classify
+
+        ctx = PlanContext(pkg="app")
+        cases = {
+            ("src/x/hardware.py", ""): "src/app/adapters/",
+            ("src/x/ssd1306.py", "import framebuf\nfrom machine import I2C\n"): "src/app/adapters/",
+            ("src/x/controller.py", "import time\n"): "src/app/services/",
+            ("DECISIONS.md", ""): "docs/adr/",
+            ("KNOWN_ISSUES.md", ""): "docs/known-issues/",
+            ("AGENTS.md", ""): "docs/standards/PROJECT_RULES.md",
+            ("conversations/raw/001_x.md", ""): ".agents/conversations/",
+            ("evals/README.md", ""): "evals/EVALS.md",
+            (".cursorrules", ""): "docs/standards/PROJECT_RULES.md",
+            ("shop.sqlite", ""): "DATA_DIR/db/",
+        }
+        for (rel, text), expected in cases.items():
+            self.assertIn(expected, classify(rel, ctx, text).target, rel)
+
     def test_move_then_fix_keeps_history(self) -> None:
         """Unchanged move out of legacy/ commits once; the next commit must fix it; `--follow` keeps the history."""
         dest = "src/shop_v2/services/pricing.py"
