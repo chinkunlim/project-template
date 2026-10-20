@@ -24,7 +24,7 @@
 python3 scripts/agentctl.py status
 ```
 
-會顯示：交接看板 (`.agents/handoff/LATEST.md`) 的即時狀態、所有進行中/待接手任務、這台電腦上最近的對話摘要。接著：
+會顯示：交接看板 (`.agents/handoff/LATEST.md`) 的即時狀態、所有進行中/待接手任務、**上一次的交接紀錄**（目標、下一步，在 git 裡）、這台電腦最新對話摘要的「下一步」、未提交的檔案數。接著：
 
 - 有 `handed_off` 任務 → 讀它的 TODO 與 blockers，再 `agentctl task claim TASK-NNN --agent <你>`。
 - 開始新工作 → `agentctl task create "標題" --paths src/... --agent <你>`（`paths` 是給下一位 Agent 的提示，不是鎖）。
@@ -79,7 +79,8 @@ python3 scripts/agentctl.py closeout --agent <你> --model <模型> \
 | `README.md` | 只有專案根目錄一份 |
 | `<主題>.md`（全大寫，如 `KNOWN_ISSUES.md`、`DECISIONS.md`） | 該資料夾的說明與總表 |
 | `_TEMPLATE.md` | 新增紀錄時照著寫的範本（`tracker_cli.py` 會自動套用 ADR / ISSUE 的範本） |
-| `NNN-<slug>.md` / `YYYY-MM-DD-<agent>.md` | 實際紀錄 |
+| `NNN-<slug>.md` | ADR、known-issue、spec 的實際紀錄 |
+| `YYYY-MM-DD-HHMM-<agent>-{transcript,summary}.md` | 對話紀錄（只在 `.agents/conversations/`，不進 git） |
 
 ## 7. 溯源三條線
 

@@ -163,22 +163,29 @@ def check_data_dir(fix: bool) -> list[tuple[str, str]]:
     return results
 
 
-def check_env_file(fix: bool) -> tuple[str, str]:
-    """Check that `.env` exists when the project provides `.env.example`.
+def check_env_file(fix: bool) -> list[tuple[str, str]]:
+    """Check that `.env` exists wherever a `.env.example` is provided (project root, `mobile/`).
 
     Args:
         fix: Copy `.env.example` to `.env` (values stay empty; fill them in yourself).
 
     Returns:
-        Tuple of status and message.
+        List of `(status, message)` results.
     """
-    example, env = ROOT / ".env.example", ROOT / ".env"
-    if not example.exists() or env.exists():
-        return ("OK", ".env 已存在" if env.exists() else "不需要 .env")
-    if fix:
-        shutil.copy2(example, env)
-        return ("WARN", "已由 .env.example 建立 .env，請填入實際金鑰")
-    return ("WARN", ".env 不存在（cp .env.example .env 後填入金鑰）")
+    results = []
+    for folder in (ROOT, ROOT / "mobile"):
+        example, env = folder / ".env.example", folder / ".env"
+        rel = (env.relative_to(ROOT).as_posix())
+        if not example.exists():
+            continue
+        if env.exists():
+            results.append(("OK", f"{rel} 已存在"))
+        elif fix:
+            shutil.copy2(example, env)
+            results.append(("WARN", f"已由 .env.example 建立 {rel}，請填入實際值"))
+        else:
+            results.append(("WARN", f"{rel} 不存在（執行 agentctl doctor --fix，或 cp {rel}.example {rel}）"))
+    return results or [("OK", "不需要 .env")]
 
 
 def venv_python_version() -> str:
@@ -262,8 +269,6 @@ def check_mobile_tools() -> list[tuple[str, str]]:
         results.append(("OK", f"Android SDK 可用（{sdk}）"))
     else:
         results.append(("WARN", "沒有 Android SDK：brew bundle --file Brewfile 安裝 Android Studio，打開後用 Device Manager 建立模擬器"))
-    if not (ROOT / "mobile" / ".env").exists() and (ROOT / "mobile" / ".env.example").exists():
-        results.append(("WARN", "mobile/.env 不存在：cp mobile/.env.example mobile/.env（EXPO_PUBLIC_* 會打包進 App，不放秘密）"))
     return results
 
 
@@ -375,7 +380,7 @@ def run_checks(fix: bool) -> list[tuple[str, str]]:
         All `(status, message)` results.
     """
     return [
-        check_python(), *check_git(fix), *check_skill_links(fix), check_env_file(fix), *check_data_dir(fix),
+        check_python(), *check_git(fix), *check_skill_links(fix), *check_env_file(fix), *check_data_dir(fix),
         *check_toolchain(), *check_host_hygiene(),
     ]
 

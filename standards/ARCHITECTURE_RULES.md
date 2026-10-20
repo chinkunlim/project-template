@@ -6,30 +6,25 @@
 
 ## 1. 可配置的單向依賴與分層邊界 (Configurable Unidirectional Layering)
 
-本框架預設提供六層單向架構，但**各專案可在 `.agents/project.toml` 的 `[architecture]` 自由規劃自己的分層名稱、多模組路徑 (`source_roots`) 與 Monorepo 子專案 (`workspaces`)**：
+語言範本預設五層（`.agents/project.toml` → `[architecture] layers`，由上而下）；上層可以引用下層，下層**不可**引用上層：
 
 ```mermaid
 flowchart TD
-    Entry["entrypoints<br/>(外部事件驗證、冪等去重、建立 Context)"]
-    Core["core<br/>(業務流程協調、領域邏輯、失敗補償)"]
-    Adapters["adapters<br/>(外部 API 防腐層、標準 DTO 轉換與備援)"]
-    Store["store<br/>(持久化狀態、交易/原子鎖、審計日誌)"]
-    Config["config<br/>(環境變數唯一讀取處、啟動期驗證)"]
-    Shared["shared<br/>(零依賴純函式：格式轉換、通用工具、錯誤定義)"]
+    Entry["entrypoints<br/>(CLI、HTTP 路由、排程、App 畫面：驗證輸入、組裝依賴)"]
+    Adapters["adapters<br/>(外部 API、資料庫、檔案、硬體：轉成 domain 物件)"]
+    Services["services<br/>(業務流程與規則，可測試的純邏輯為主)"]
+    Domain["domain<br/>(資料型別與領域錯誤，沒有 I/O)"]
+    Config["config<br/>(唯一讀環境變數的地方、logging 設定)"]
 
-    Entry --> Core
-    Core --> Adapters
-    Core --> Store
-    Entry & Core & Adapters & Store --> Config
-    Entry & Core & Adapters & Store & Config --> Shared
+    Entry --> Adapters --> Services --> Domain --> Config
 ```
 
-- **自訂分層範例（`.agents/project.toml`）**：
-  - 語言範本（`init_project.py` 產生）預設：`layers = ["entrypoints", "adapters", "services", "domain", "config"]`
-  - 上圖六層：`layers = ["entrypoints", "core", ["adapters", "store"], "config", "shared"]`
+- 依賴注入：`entrypoints` 建立 adapter 再交給 service（service 只認得參數，不自己連網或讀檔），所以測試可以傳入假的 adapter。
+- **自訂分層範例**（各專案可在 `[architecture]` 改名稱、`source_roots` 與 `workspaces`）：
   - DDD / Clean Architecture：`layers = ["presentation", "application", "infrastructure", "domain"]`
   - Web MVC / Service：`layers = ["routes", "controllers", "services", "repositories", "models", "utils"]`
-- `python3 scripts/agentctl.py graph` 會自動讀取 `.agents/project.toml` 的 `layers` 順序並強制檢查**下層不可反向引用上層**。
+  - 同一層的多個資料夾：`layers = ["entrypoints", ["adapters", "store"], "services", "domain", "config"]`
+- `python3 scripts/agentctl.py check`（以及 `agentctl graph`）會讀 `layers` 順序，發現下層反向引用上層就失敗。
 
 ---
 
@@ -39,11 +34,11 @@ flowchart TD
    - 依賴方向必須嚴格遵循 `.agents/project.toml` 中 `[architecture] layers` 由上至下的順序，下層嚴禁反向引用上層，禁止循環依賴。
 2. **環境零污染 (Zero Global Pollution)**：
    - 專案用到的套件與工具只裝在專案內（Python `.venv/` 由 uv 管理、Node `node_modules/` 由 pnpm 管理），版本由鎖定檔固定；主機只放共用的系統工具。完整規則見 [`ENVIRONMENT_AND_DEPENDENCIES.md`](ENVIRONMENT_AND_DEPENDENCIES.md)。
-   - 憑證與機密鎖在專案目錄內並加入 `.gitignore`。
+   - 金鑰只放 `.env`（不進 git）；憑證檔放專案外的 `~/.config/<專案>/`（權限 600）。
 3. **外部 API 防腐層 (Anti-Corruption Layer)**：
    - `adapters`（或基礎設施層）必須將第三方 API 的原始格式轉換為內部標準 DTO，並捕捉 HTTP 429/5xx 轉為標準領域錯誤，不讓第三方格式滲透進核心領域層。
-4. **核心與 I/O 解耦 (`simulate` 模式必備)**：
-   - 核心領域層只透過抽象 Context / 介面與外界互動，讓正式環境、`dev/simulate` 與離線測試共用 100% 相同的核心流程。
+4. **核心與 I/O 解耦**：
+   - `services` 只透過參數拿到 adapter（或函式），不自己連網、讀檔、讀環境變數；正式環境與離線測試跑的是同一份流程，只是傳入的 adapter 不同。
 5. **冪等性與防重送 (Idempotency & Deduplication)**：
    - 接收外部 Webhook、訊息佇列或重試請求時，入口層應具備冪等去重機制，防止重複執行副作用。
 6. **並發鎖不可跨網路呼叫 (Short-Lived Locks)**：
@@ -51,7 +46,7 @@ flowchart TD
 7. **外部依賴降級與狀態補償守則 (Fallback & Compensating Transactions)**：
    - 外部服務失敗時優先切換備援，若最終仍失敗，必須執行對應的狀態回滾或補償操作（可在 `.agents/project.toml` 的 `[project_rules] paired_calls` 定義專案專屬的成對呼叫檢查，例如 `[["begin_tx", "rollback_tx"]]` 或 `[["check_and_consume_quota", "refund_quota"]]`），並回覆使用者友善錯誤訊息。
 8. **資料容量防衛與結構向下相容 (Storage Hygiene & Schema Evolution)**：
-   - 寫入儲存層前限制單筆大小，新增欄位或遷移 Schema 時保持向下相容，並同步更新 `docs/architecture/DATA_SCHEMA.md`。
+   - 寫入儲存層前限制單筆大小，新增欄位或遷移 Schema 時保持向下相容，並在 `docs/architecture/ARCHITECTURE.md` 的資料模型段落記錄（資料庫結構以 Alembic 遷移檔為準）。
 9. **目錄樹與多 Agent 入口防脫節檢查 (Drift Detection)**：
    - 檔案增刪或規則調整後，由 `python3 scripts/agentctl.py tree` 與 `python3 scripts/agentctl.py sync` 自動同步目錄樹與各 AI Agent 入口檔。
 10. **四向溯源體系 (Four-Way Traceability)**：
@@ -73,11 +68,11 @@ flowchart TD
 ## 4. 資料庫規則（SQLAlchemy 2.0 + Alembic + SQLite）
 
 1. **位置**：ORM 模型、engine / session、repository 都在 `src/<pkg>/adapters/db/`；其他層只拿到 domain 物件，不 import ORM 模型。
-2. **連線**：`DATABASE_URL` 只在 config 層讀取（預設 `sqlite:///data/app.db`，`data/` 不進 git）；換 PostgreSQL 只改 `.env`。
+2. **連線**：`DATABASE_URL` 只在 config 層讀取（留空 = `<DATA_DIR>/db/app.db`，在專案資料夾之外）；換 PostgreSQL 只改 `.env`。
 3. **交易**：一律用 `session_scope()`（成功 commit、錯誤 rollback）；**不要在交易中呼叫外部 API 或做長時間運算**。
 4. **改資料表一定要有遷移檔**：修改 `models.py` 後執行 `uv run alembic revision --autogenerate -m "..."`，檢查並補上遷移檔開頭的說明；`agentctl check` 的 `dbcheck`（`alembic upgrade head && alembic check`）會在模型與遷移不一致時失敗。
 5. **不要手動改資料庫結構**（例如用 SQLite 工具直接加欄位），也不要修改已經 commit 的遷移檔；要改就新增一個 revision。
-6. **測試**：用記憶體資料庫（`create_db_engine("sqlite://")` + `Base.metadata.create_all`），不讀寫 `data/` 的檔案。
+6. **測試**：用記憶體資料庫（`create_db_engine("sqlite://")` + `Base.metadata.create_all`），不讀寫 `DATA_DIR` 的真實資料庫。
 
 ## 5. 資料與程式分離
 

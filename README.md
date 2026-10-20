@@ -4,9 +4,26 @@
 
 ---
 
+## 0. 這台電腦需要什麼（只要一次）
+
+| 工具 | 用途 | 安裝 |
+|---|---|---|
+| git、`python3`（macOS 內建即可） | 執行框架指令 | Xcode Command Line Tools |
+| uv | Python 專案（自動下載 Python 3.11 到專案內） | `brew install uv` |
+| nvm + Node（`.nvmrc`）＋ corepack pnpm | 網頁、GAS、手機 App | 見 `standards/ENVIRONMENT_AND_DEPENDENCIES.md` |
+| Xcode（App Store）、Android Studio | 只有手機 App 需要（iOS / Android 模擬器） | 專案內 `Brewfile` 與 `mobile/MOBILE.md` |
+
+所有套件都裝在各專案資料夾內（`.venv/`、`node_modules/`），不用全域 pip、`npm -g` 或 `sudo`。
+
+---
+
 ## 1. 建立新專案
 
-在母版資料夾內執行（路徑換成你自己的）
+在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）
+
+```bash
+cd "$HOME/Desktop/project/01 project_template"
+```
 
 ```bash
 python3 init_project.py --target ~/projects/my_app --stack python
@@ -39,7 +56,27 @@ python3 init_project.py --list-skills
 | `--force` | 允許寫入非空資料夾（預設會拒絕，避免覆蓋既有檔案；此時不會自動 commit） |
 | `--no-git` | 不建立 git repo |
 
-建立後：`cd` 進專案 → `python3 scripts/agentctl.py status`。
+建立後（第一次 commit 已自動完成）：
+
+1. 進入新專案，檢查並修復環境（啟用 git hook、建立 `.env` 與 DATA_DIR）：
+
+```bash
+cd ~/projects/my_app && python3 scripts/agentctl.py doctor --fix
+```
+
+2. 打開 `.env` 填入金鑰；安裝依賴（只裝在專案內）：
+
+```bash
+python3 scripts/agentctl.py setup --install
+```
+
+3. 確認一切正常：
+
+```bash
+python3 scripts/agentctl.py check
+```
+
+4. 用 Claude Code / Antigravity / Cursor 打開這個資料夾，對 Agent 說「開工」。Agent 會自動讀 `AGENTS.md`，之後用口語即可（「新功能：…」「commit」「收工」「出版本」…，對照表在新專案的 `AGENTS.md` §1 與 `README.md`）。
 
 ### 把舊專案搬進新結構
 
@@ -53,6 +90,13 @@ python3 migrate_project.py --from ~/projects/old_app --target ~/projects/old_app
 - `python3 scripts/agentctl.py migration --verify` 全部通過才算完成（`legacy/` 清空、check 與測試通過、任務全部完成、README 已改寫…）。
 - `--mode maintain`（預設）：舊專案已完工，保留 Flask，只整理結構與規範；`--mode develop`：要繼續開發，Flask 全部改寫成 FastAPI。之後也可用 `agentctl migration --develop` 切換。
 - 舊專案必須先 commit（未 commit 的修改不會搬過去）；不是 git repo 的舊資料夾會改成複製（不含 `.env`、金鑰、`.venv`、`node_modules`）。
+
+遷移後的步驟：
+
+1. `cd` 進新資料夾，執行 `python3 scripts/agentctl.py doctor --fix`。
+2. 依 `docs/migration/MIGRATION.md` §4.5 把舊資料複製到 `DATA_DIR`（不會自動搬，舊專案的資料原封不動）。
+3. 對 Agent 說「繼續遷移」。Agent 依 `legacy-migration` skill 一批一批做：每批**先單獨 commit 原樣搬移**（保留 git 歷史），**下一個 commit 補齊註解、型別、log 與測試**。
+4. 進度：`python3 scripts/agentctl.py migration`；全部完成時 `migration --verify` 會通過。
 
 ---
 
@@ -68,7 +112,7 @@ my_app/
 │   ├── framework.lock        # 框架版本與檔案雜湊（update 時判斷檔案是否被專案修改）
 │   ├── bin/                  # 框架腳本：agent_task, auto_commit, doctor, setup_env, update_framework, ...
 │   ├── hooks/                # 版本控管的 hooks（core.hooksPath）：pre-commit（秘密、資料檔、code-review-guard）、pre-push
-│   ├── handoff/LATEST.md     # 交接看板 + 時間軸
+│   ├── handoff/LATEST.md     # 交接看板 + 時間軸（agentctl status 會顯示上一次的下一步）
 │   ├── tasks/                # 任務卡
 │   ├── lib/                  # 框架共用函式庫
 │   └── skills/               # core + 依 stack 安裝的 skills（catalog.json）
@@ -81,7 +125,8 @@ my_app/
 ├── scripts/
 │   └── agentctl.py           # 單一入口：status / task / commit / closeout / check / sync / finish / doctor / update …
 │                             # （scripts/ 其餘留給專案自己的腳本）
-└── src/ tests/ ...           # 語言範本（完整註解、分層、可直接跑測試）
+├── src/ tests/ ...           # 語言範本（完整註解、分層、log、可直接跑測試）
+└── web/ gas/ mobile/ alembic/ evals/   # 依 --with 加入，各有說明檔（WEB.md、GAS.md、MOBILE.md、DB.md、EVALS.md）
 ```
 
 ---
@@ -108,7 +153,19 @@ my_app/
 
 ---
 
-## 4. 母版資料夾結構
+## 4. 維護母版
+
+1. 使用時發現「以後每個專案都要這樣」的規則，Agent 會記在該專案的 `docs/TEMPLATE_FEEDBACK.md`；累積一些後回到母版一起修改。
+2. 改完母版，跑測試（見第 6 節），再 commit 母版。
+3. 讓既有專案拿到新版框架（被專案改過的檔案不會覆蓋，另存 `*.template`）：
+
+```bash
+python3 scripts/agentctl.py update --from "$HOME/Desktop/project/01 project_template"
+```
+
+---
+
+## 5. 母版資料夾結構
 
 ```text
 01 project_template/
@@ -120,7 +177,7 @@ my_app/
 ├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
 ├── tools/                    # 只留在母版：sync_github_skills.py（維護 skills 上游參考時才用）
 ├── standards/                # → 新專案 docs/standards/
-├── packs/                    # 語言範本：python_pack / web_pack / gas_pack / other_packs、stack_config（project.toml、.gitignore、CI）、docs_templates
+├── packs/                    # 語言範本：python / api / db / ollama / evals / web / gas / mobile / other_packs、stack_config（project.toml、.gitignore、CI）、migration_plan、docs_templates
 ├── skills/                   # → 新專案 .agents/skills/（依 catalog.json 選擇）
 │   ├── catalog.json          # 每個 skill 的分層、觸發時機、指令
 │   └── skills.lock.json      # 上游參考原始碼（釘選 commit + license；只留在母版）
@@ -132,7 +189,7 @@ my_app/
 
 ---
 
-## 5. 驗證框架本身
+## 6. 驗證框架本身
 
 ```bash
 python3 tests/test_framework.py -v

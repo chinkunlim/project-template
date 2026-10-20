@@ -195,7 +195,7 @@ PROJECT_RULES = """# 本專案專屬規則 (PROJECT_RULES)
 
 ## 4. 禁止事項
 
-- （例）不要修改 `data/input/` 的原始檔（只讀）。
+- （例）不要修改 `DATA_DIR/input/` 的原始檔（只讀）。
 """
 
 TEMPLATE_FEEDBACK = """# 給專案模板的改進建議 (TEMPLATE_FEEDBACK)

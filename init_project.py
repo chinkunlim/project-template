@@ -44,6 +44,7 @@ from framework_install import (  # noqa: E402
     select_skills,
     write_lock,
 )
+from packs.common import slugify_package_name  # noqa: E402
 from packs.docs_templates import docs_skeleton  # noqa: E402
 from packs.language_packs import (  # noqa: E402
     ADDON_CHOICES,
@@ -80,17 +81,29 @@ def _utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def build_agents_md(project_name: str, description: str) -> str:
+def build_agents_md(project_name: str, description: str, languages: list[str] | None = None) -> str:
     """Render the root `AGENTS.md` (rules every agent reads first).
 
     Args:
         project_name: Project name shown in the title.
         description: One-line project description.
+        languages: Base stack plus add-ons; stack-specific sentences are added only when they apply.
 
     Returns:
         Markdown text. The SKILLS and TREE blocks are filled later by
         `sync_agent_adapters.py` and `update_tree.py`.
     """
+    langs = languages or []
+    mobile_rule = (
+        "手機 App 預設在 iOS 模擬器 / Android 模擬器測試（`adb reverse` 轉接後端 port）；用真的手機時只用 `expo start --tunnel`，"
+        "後端不開放到網路（見 `mobile/MOBILE.md`）。"
+    ) if "mobile" in langs else ""
+    log_how = "；".join(part for part in (
+        "Python 每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`，log 檔在 `DATA_DIR/logs/`，用 run id 追蹤一次執行"
+        if "python" in langs else "",
+        "手機 App 用 `createLogger(\"<層>/<模組>\")`" if "mobile" in langs else "",
+        "JS / GAS 用 `console.info / warn / error`" if {"node", "gas", "web"} & set(langs) else "",
+    ) if part) or "依語言使用標準的 logger"
     return f"""# AGENTS.md — {project_name}
 
 > {description}
@@ -126,10 +139,10 @@ def build_agents_md(project_name: str, description: str) -> str:
 6. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（專案資料夾之外）；程式透過 config 取得路徑，專案內只放程式、文件和小型測試樣本。
 7. **單向分層**：依 `.agents/project.toml` 的 `[architecture] layers`，上層可依賴下層，反之禁止。
 8. **環境隔離（不污染主機）**：Python 只用 `uv add` / `uv run`，Node 只用 `pnpm add` / `pnpm exec`；禁止 `pip install`、`npm`、`npx`、全域安裝與 `sudo`（見 [`ENVIRONMENT_AND_DEPENDENCIES.md`](docs/standards/ENVIRONMENT_AND_DEPENDENCIES.md)）。
-9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。手機 App 預設在 iOS 模擬器 / Android 模擬器測試（`adb reverse` 轉接後端 port）；用真的手機時只用 `expo start --tunnel`，後端不開放到網路（見 `mobile/MOBILE.md`）。
+9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。{mobile_rule}
 10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
 11. **通用規則回寫母版**：使用者提出「以後每個專案都要這樣」的規則時，寫進 [`docs/TEMPLATE_FEEDBACK.md`](docs/TEMPLATE_FEEDBACK.md)，由使用者決定是否更新專案模板；只適用本專案的規則寫進 [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
-12. **Log 追蹤**：每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`；執行的開始與結束、外部呼叫、跳過與重試、例外（`logger.exception`）都要記 log，不記秘密與個資。log 在 `DATA_DIR/logs/`，用 run id 追蹤一次執行（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
+12. **Log 追蹤**：執行的開始與結束、外部呼叫、跳過與重試、例外都要記 log，不記秘密與個資。{log_how}（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
 <!-- RULES_END -->
 
 ## 2.5 Agent 分工（選填，由使用者維護）
@@ -186,56 +199,104 @@ def build_agents_md(project_name: str, description: str) -> str:
 """
 
 
-def build_readme_md(project_name: str, description: str) -> str:
-    """Render the starter `README.md` for humans.
+README_GUIDES = (
+    ("web", "web/WEB.md", "網頁前端（本機預覽）"),
+    ("gas", "gas/GAS.md", "Google Apps Script（測試、打包、clasp 推送）"),
+    ("mobile", "mobile/MOBILE.md", "手機 App（Expo：模擬器、實機 tunnel、上架）"),
+    ("api", "src/{pkg}/entrypoints/http/API.md", "HTTP API（FastAPI，啟動與 /docs）"),
+    ("db", "alembic/DB.md", "資料庫（SQLAlchemy + Alembic：改資料表的流程）"),
+    ("ollama", "docs/PROMPT_TEMPLATES.md", "本機模型的 prompt 版本"),
+    ("evals", "evals/EVALS.md", "輸出品質評估"),
+)
+
+
+def build_readme_md(project_name: str, description: str, settings: dict | None = None) -> str:
+    """Render the starter `README.md` for humans: setup on a new computer, daily use, guides.
 
     Args:
         project_name: Project name.
         description: One-line project description.
+        settings: Output of `project_settings()` (languages and test command); None for a minimal README.
 
     Returns:
         Markdown text.
     """
+    settings = settings or {"languages": [], "test": ""}
+    langs = settings["languages"]
+    pkg = slugify_package_name(project_name)
+    doctor_what = "啟用 git hook、建立 `.env`" + (" 與 `mobile/.env`" if "mobile" in langs else "") + "、建立 DATA_DIR、檢查 " + "、".join(
+        t for t, need in (("uv", "python" in langs), ("Node / pnpm", bool({"node", "gas", "mobile"} & set(langs))),
+                          ("Xcode / Android SDK", "mobile" in langs)) if need) + "（只修這個專案，不安裝全域工具）"
+    install_what = "、".join(t for t, need in (("uv sync（專案內 `.venv/`）", "python" in langs),
+                                             ("pnpm install（各資料夾內的 `node_modules/`）", bool({"node", "gas", "mobile"} & set(langs)))) if need)
+    guides = [f"- [`{path.format(pkg=pkg)}`]({path.format(pkg=pkg)}) — {desc}" for key, path, desc in README_GUIDES if key in langs]
+    python_note = (
+        "\n新增 Python 套件：`uv add <套件>`（開發工具 `uv add --dev <套件>`）；執行程式：`uv run ...`。"
+        "Python 版本由 uv 依 `.python-version` 自動下載，不會動到主機的 Python / pip。\n" if "python" in langs else ""
+    )
+    test_block = f"""
+專案測試
+
+```bash
+{settings["test"]}
+```
+""" if settings.get("test") else ""
+    install_block = f"""
+4. 安裝依賴：{install_what}
+
+```bash
+python3 scripts/agentctl.py setup --install
+```
+""" if install_what else ""
     return f"""# {project_name}
 
 {description}
 
-## 在新電腦上開始
+> 請把上面兩行改寫成這個專案的說明（`agentctl finish` 會檢查）。以下是開發環境與日常操作。
+
+## 第一次在這台電腦使用
+
+1. 取得程式（已經在本機就略過）
 
 ```bash
 git clone <repo-url> && cd {project_name}
 ```
 
-啟用 git hook、重建 skills 連結、檢查 uv / node
+2. 檢查並修復環境：{doctor_what}
 
 ```bash
 python3 scripts/agentctl.py doctor --fix
 ```
 
-uv sync（專案內 .venv）+ pnpm install（專案內 node_modules）
+3. 打開 `.env` 填入金鑰與設定（`.env` 不會被 commit）{"；App 的設定在 `mobile/.env`（會打包進 App，不放秘密）" if "mobile" in langs else ""}。
+{install_block}
+> 換電腦時：資料不在 git 裡，另外複製整個 `DATA_DIR`（路徑寫在 `.env`）。
+{python_note}
+## 確認一切正常
+
+註解、分層、秘密、lint、型別、目錄樹
 
 ```bash
-python3 scripts/agentctl.py setup --install
+python3 scripts/agentctl.py check
 ```
+{test_block}
+## 和 AI Agent 一起開發
 
-填入自己的金鑰（不會被 commit）
+用 Claude Code、Antigravity、Cursor 等工具打開這個資料夾，Agent 會自動讀 `AGENTS.md`。直接用口語下指令：
 
-```bash
-cp .env.example .env
-```
+| 你說 | Agent 會做 |
+|---|---|
+| 「開工」「繼續上次的」 | 看交接看板、上次的下一步、未完成的任務 |
+| 「新功能：…」 | 建任務卡，寫測試與程式 |
+| 「commit」 | 檢查後本機 commit（英文訊息，不會推送） |
+| 「去上課」「先暫停」 | 記下進度，下次接著做 |
+| 「收工」 | 測試、寫對話紀錄與摘要、更新交接看板、commit |
+| 「推上去」 | 列出要推送的 commit，等你同意 |
+| 「出版本」「專案完成了」 | 完成驗收；`--tag` 時升版並打 tag |
 
-所有依賴都裝在專案資料夾內（`.venv/`、`node_modules/`），Python 版本由 uv 依 `.python-version` 自動下載，不會動到主機的 Python / pip。
-新增套件：`uv add <套件>`（開發工具 `uv add --dev <套件>`）；執行程式：`uv run ...`。
-
-測試（或 python3 scripts/agentctl.py check）
-
-```bash
-uv run python -m unittest discover -s tests -v
-```
+完整對照表見 [`AGENTS.md`](AGENTS.md) §1。
 
 ## 常用指令
-
-交接看板、任務、最近的對話摘要
 
 ```bash
 python3 scripts/agentctl.py status
@@ -245,24 +306,20 @@ python3 scripts/agentctl.py status
 python3 scripts/agentctl.py task create "標題" --agent <名字>
 ```
 
-署名 + CHANGELOG Unreleased + 秘密掃描
-
 ```bash
 python3 scripts/agentctl.py commit --agent <名字>
 ```
-
-測試、對話紀錄（逐字稿＋摘要）、交接、Commit
 
 ```bash
 python3 scripts/agentctl.py closeout --agent <名字>
 ```
 
-重新產生入口檔與目錄樹
+全部子指令
 
 ```bash
-python3 scripts/agentctl.py sync
+python3 scripts/agentctl.py --help
 ```
-
+{"" if not guides else chr(10) + "## 各部分說明" + chr(10) + chr(10) + chr(10).join(guides) + chr(10)}
 ## 文件索引
 
 - [`AGENTS.md`](AGENTS.md) — Agent 規則與「文件放哪裡」對照表
@@ -272,6 +329,7 @@ python3 scripts/agentctl.py sync
 - [`docs/known-issues/KNOWN_ISSUES.md`](docs/known-issues/KNOWN_ISSUES.md) — 已知問題
 - [`docs/specs/SPECS.md`](docs/specs/SPECS.md) — 需求規格
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — 系統架構與目錄樹（依賴圖、審計報告需要時用 `agentctl graph` / `agentctl audit` 產生）
+- [`docs/standards/PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md) — 本專案特有的規則
 - [`CHANGELOG.md`](CHANGELOG.md) — 版本變更
 """
 
@@ -362,8 +420,8 @@ def write_project_documents(target_dir: Path, project_name: str, settings: dict,
     files = {
         ".agents/project.toml": build_project_toml(project_name, settings, extras["description"], extras["skills"]),
         ".agents/handoff/LATEST.md": build_handoff_md(),
-        "AGENTS.md": build_agents_md(project_name, extras["description"]),
-        "README.md": build_readme_md(project_name, extras["description"]),
+        "AGENTS.md": build_agents_md(project_name, extras["description"], langs),
+        "README.md": build_readme_md(project_name, extras["description"], settings),
         "CHANGELOG.md": build_changelog_md(project_name),
         ".gitignore": build_gitignore(langs),
         ".env.example": build_env_example(project_name, langs),

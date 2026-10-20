@@ -4,7 +4,7 @@
     "session-closeout": {
       "tier": "core",
       "trigger": "使用者說「結束對話 / 收工 / wrap up」時",
-      "command": "python3 .agents/skills/session-closeout/scripts/closeout_runner.py --agent <name>"
+      "command": "python3 scripts/agentctl.py closeout --agent <name> --goal ... --issues ... --next ..."
     },
     "code-review-guard": {
       "tier": "core",
@@ -37,7 +37,7 @@
         "web"
       ],
       "trigger": "建立、美化或審查網頁 UI / 元件時（含視覺品味 Anti-Slop 審查）",
-      "command": "python3 .agents/skills/frontend-design/scripts/frontend_tool.py --check src/；taste_auditor.py --audit src/"
+      "command": "python3 .agents/skills/frontend-design/scripts/frontend_tool.py --check web/（品味：scripts/taste_auditor.py --audit web/）"
     },
     "legacy-migration": {
       "tier": "optional",

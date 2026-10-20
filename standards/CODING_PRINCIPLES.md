@@ -129,11 +129,11 @@ export function calculateTotal(items, taxRate, coupon) { ... }
 
 | 原則 | 在本框架的具體實踐要求 | ❌ 禁止的反模式 (Anti-Patterns) |
 |---|---|---|
-| **S — 單一職責 (Single Responsibility)** | 每個檔案、類別與函式只有一個修改理由：<br>• `entrypoints` (入口層)：驗證、冪等去重、建立抽象 Context<br>• `core` (核心層)：業務流程編排與領域規則<br>• `adapters` (防腐層)：外部 API 呼叫與標準 DTO 轉換<br>• `store` (儲存層)：狀態讀寫、交易與並發鎖<br>• `shared` (純工具層)：零副作用資料轉換與格式化 | 在外部 API Adapter 內直接拼湊 UI 畫面，或在 `core` 業務層內直接讀取作業系統環境變數（`os.environ` / `process.env` / `os.Getenv`）。 |
+| **S — 單一職責 (Single Responsibility)** | 每個檔案、類別與函式只有一個修改理由：<br>• `entrypoints`：驗證輸入、組裝依賴、輸出結果<br>• `adapters`：外部 API、資料庫、檔案與硬體 I/O，轉成 domain 物件<br>• `services`：業務流程與規則<br>• `domain`：資料型別與領域錯誤<br>• `config`：設定與 logging | 在外部 API Adapter 內直接拼湊 UI 畫面，或在 `services` 內直接讀取作業系統環境變數（`os.environ` / `process.env` / `os.Getenv`）。 |
 | **O — 開放封閉 (Open/Closed)** | **對擴充開放、對修改封閉**。新增指令、策略、資料源或供應商時，透過註冊表（Registry / Map / Trait / Interface）擴充，不修改核心調度迴圈。 | 每次加一個新功能分支，就在主流程寫長串 `if / elif / else` 或 `switch`。 |
 | **L — 里氏替換 (Liskov Substitution)** | 同一抽象介面（Port / Interface / Protocol / Trait）的所有實作（如主服務 vs. 備援服務、正式 `Store` vs. 測試 `FakeStore`）必須遵守完全相同的輸入契約、回傳 DTO 結構與標準例外型別。 | 某個實作失敗時回傳 `null`/`None`，另一個卻拋出未包裝的底層例外，導致呼叫端必須針對特定實作寫特例判斷。 |
-| **I — 介面隔離 (Interface Segregation)** | 函式只接收完成任務所需的**最小參數集合**。`shared/` 內的純函式只傳入基本型別或小型結構，不傳入整個 `ctx` 或整份 `config`。 | 把龐大的 `config` 或 `ctx` 傳進單純的字串排版函式。 |
-| **D — 依賴反轉 (Dependency Inversion)** | 高層業務模組不依賴低層外部細節，兩者皆依賴抽象介面（注入之 Context / Repository / Port 與標準 DTO）。這使核心邏輯可同時被正式服務、`dev/simulate` 與離線單元測試共用。 | 在核心業務層頂層寫死特定第三方 SDK 或網路連線，導致無法在無網路環境下跑單元測試。 |
+| **I — 介面隔離 (Interface Segregation)** | 函式只接收完成任務所需的**最小參數集合**。純函式只傳入基本型別或小型結構，不傳入整份 `config`。 | 把整份 `config` 傳進單純的字串排版函式。 |
+| **D — 依賴反轉 (Dependency Inversion)** | 高層業務模組不依賴低層外部細節，兩者皆依賴抽象介面（以參數注入的 adapter / repository 與 domain 物件）。這讓同一份業務邏輯可同時用在正式環境與離線單元測試。 | 在核心業務層頂層寫死特定第三方 SDK 或網路連線，導致無法在無網路環境下跑單元測試。 |
 
 ---
 
@@ -142,7 +142,7 @@ export function calculateTotal(items, taxRate, coupon) { ... }
 1. **單一設定來源 (Single Source of Truth)**：
    - 專案架構分層、品質門檻與業務成對規則統一由 `.agents/project.toml` 定義；應用程式執行期設定統一集中於 `config` 層，禁止在業務程式碼中散落 Magic Numbers 或硬編碼字串。
 2. **禁止複製貼上邏輯 (Rule of Three)**：
-   - 相同的資料清洗、解析、錯誤分類邏輯不可在多個檔案中重複出現；需要重複使用時立即抽取至 `shared` 或領域共用模組。
+   - 相同的資料清洗、解析、錯誤分類邏輯不可在多個檔案中重複出現；需要重複使用時抽取成共用函式（放在使用它的最低那一層，通常是 `domain` 或 `services`）。
 3. **跨 AI Agent 規則不重複維護**：
    - 全專案只手寫維護 `AGENTS.md` 與 `.agents/project.toml`；`CLAUDE.md`、`GEMINI.md`、`.github/copilot-instructions.md`、`.cursor/rules/` 由 `python3 scripts/agentctl.py sync` 自動同步產生。
 
@@ -152,7 +152,7 @@ export function calculateTotal(items, taxRate, coupon) { ... }
 
 1. **何時使用 OOP / Struct + Interface（邊界與狀態封裝）**：
    - **資料傳輸物件 (DTO / Value Objects)**：使用不可變結構（Python `@dataclass(frozen=True)`、TypeScript `readonly interface`、Go/Rust struct）表達跨層傳遞的資料。
-   - **外部資源與狀態邊界 (`adapters`、`store`)**：封裝需要連線池、API 金鑰、並發鎖或執行情境 (`ExecutionContext`) 的物件。
+   - **外部資源與狀態邊界 (`adapters`)**：封裝需要連線池、API 金鑰、session 或並發鎖的物件。
    - **組合優於繼承 (Composition over Inheritance)**：嚴禁超過 **2 層** 的類別繼承樹；優先透過注入協作者或策略函式組合行為。
 2. **何時使用 Pure Functions（核心計算與轉換）**：
    - 資料轉換、關鍵字處理、格式排版、規則校驗一律寫成**零副作用 (Side-effect free)、相同輸入必得相同輸出**的純函式。
@@ -162,8 +162,8 @@ export function calculateTotal(items, taxRate, coupon) { ... }
 ## 4. 模組化 (Modularity：高內聚、低耦合)
 
 1. **嚴格單向依賴鏈**：
-   - 依賴順序由 `.agents/project.toml` 的 `[architecture] layers` 定義（預設：`entrypoints ➔ core ➔ adapters / store ➔ config ➔ shared`）。
-   - 下層模組**絕對禁止**逆向引用上層模組，禁止循環依賴（由 `python3 scripts/agentctl.py graph` 自動審計）。
+   - 依賴順序由 `.agents/project.toml` 的 `[architecture] layers` 定義（預設：`entrypoints ➔ adapters ➔ services ➔ domain ➔ config`）。
+   - 下層模組**絕對禁止**逆向引用上層模組，禁止循環依賴（由 `agentctl check` / `agentctl graph` 自動檢查）。
 2. **明確的公開介面與私有封裝**：
    - 模組內部輔助函式必須標記為私有（Python `_helper()`、JS/TS 不匯出、Go 小寫開頭、Rust 無 `pub`），禁止跨模組直接呼叫私有實作。
 
@@ -174,7 +174,7 @@ export function calculateTotal(items, taxRate, coupon) { ... }
 ### 5.1 Atomic Functions (原子化函式 — 門檻可於 `.agents/project.toml` `[quality]` 調整)
 - **一個函式只做一件事**，且函式內的所有語句維持在同一抽象層級。
 - **預設量化指標**（由 `review_guard.py` 支援 Python / JS / TS / Go / Rust 自動檢查）：
-  - 單一函式目標 **$\le 30$ 行**（`max_function_lines = 30`，硬上限 `hard_max_function_lines = 50`）。
+  - 單一函式目標 **$\le 40$ 行**（新專案的 `max_function_lines = 40`，超過是警告；硬上限 `hard_max_function_lines = 80`，超過會擋 commit）。
   - 函式參數 **$\le 4$ 個**（`max_params = 4`，超過時封裝為 DTO / Options 結構）。
   - 縮排層級 **$\le 3$ 層**（`max_nesting = 3`，優先使用 **Guard Clauses / Early Return**）。
 

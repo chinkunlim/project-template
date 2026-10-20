@@ -26,7 +26,7 @@ description: >-
 python3 scripts/agentctl.py migration --develop
 ```
 
-資料庫：舊的 SQLAlchemy 模型搬到 `src/<pkg>/adapters/db/`；舊的 Alembic / Flask-Migrate revision 搬到 `alembic/versions/`（保留 revision ID，刪除範例的 `greetings` revision 與模型）；`.db` 資料檔放 `data/`，不進 git。完成後 `uv run alembic upgrade head && uv run alembic check` 必須通過。
+資料庫：舊的 SQLAlchemy 模型搬到 `src/<pkg>/adapters/db/`；舊的 Alembic / Flask-Migrate revision 搬到 `alembic/versions/`（保留 revision ID，刪除範例的 `greetings` revision 與模型）；`.db` 資料檔複製到 `DATA_DIR/db/`（專案資料夾之外，不進 git；見 MIGRATION.md §4.5）。完成後 `uv run alembic upgrade head && uv run alembic check` 必須通過。
 
 ## 1. 開始前
 

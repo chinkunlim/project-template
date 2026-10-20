@@ -4,24 +4,28 @@
 
 ---
 
-## 1. 三層測試金字塔 (Testing Pyramid)
+## 1. 三層測試
 
-| 測試層級 | 目錄位置 | 網路與外部依賴 | 執行速度與時機 | 測試重點 |
+測試資料夾：Python `tests/`、Node / GAS `test/`、手機 App `mobile/test/`（檔名 `test_*.py`、`*.test.js`、`*.test.ts`）。
+
+| 層級 | 放哪裡 | 網路 | 何時跑 | 測什麼 |
 |---|---|---|---|---|
-| **L1 單元測試 (Unit)** | `test/unit/` | **零網路**（純記憶體） | 毫秒級，每次修改必跑 | `shared` 純函式、`config` 驗證、`adapters` 靜態樣本 (Fixture) 解析 |
-| **L2 整合測試 (Integration)** | `test/integration/` | **零網路**（注入 `test/helpers/` Fake HTTP / Fake Context） | 秒級，每次 Commit 前必跑 | `entrypoints ➔ core ➔ store` 完整流程、冪等去重、失敗補償與專案自訂規則 (`[project_rules]`) |
-| **L3 端對端與模擬 (E2E & Simulate)** | `test/e2e/`、`dev/simulate` | **真實網路與 API**（需 `.env` 金鑰） | 手動或發布前執行 | 驗證真實外部 API 連線、備援切換與端對端流程 |
+| **單元** | `tests/test_<模組>.py` | **不連網**（純記憶體） | 每次修改 | `services`、`domain` 的純邏輯；`config` 驗證；`adapters` 用靜態樣本解析 |
+| **整合** | `tests/integration/` | **不連網**（假的 HTTP client、記憶體資料庫 `sqlite://`、FastAPI `TestClient`） | 每次 commit 前 | `entrypoints ➔ services ➔ adapters` 完整流程、錯誤處理、`[project_rules]` |
+| **端對端** | `tests/e2e/`（預設不跑） | **真實網路與 API**（需要 `.env` 金鑰） | 手動或發布前 | 真實外部服務、備援切換 |
+
+`[commands] test` 只跑前兩層；端對端測試要明確執行，並且不可成為 `agentctl check` 的一部分。
 
 ---
 
 ## 2. 靜態樣本驅動測試 (Fixture-Driven Testing)
 
-1. 外部網頁、API 回應、第三方 Webhook Payload 的解析邏輯，**嚴禁在單元測試中直接連網抓取**。
-2. 必須先將真實回應去敏後存放在 `test/fixtures/`（如 `sample_response.json`、`sample_page.html`），再由 `test/unit/` 讀取檔案驗證解析純函式。
-3. 當外部服務格式改版導致解析失效時：
+1. 外部網頁、API 回應、Webhook payload 的解析邏輯，**單元測試不可直接連網**。
+2. 先把真實回應去除個資後存到 `tests/fixtures/`（如 `sample_response.json`、`sample_page.html`，每個 ≤ 1 MB；pre-commit 允許這個資料夾的小樣本），再由單元測試讀檔驗證解析函式。
+3. 外部服務格式改版導致解析失效時：
    - 先記錄 `docs/known-issues/NNN-xxx.md`
-   - 將新版樣本存入 `test/fixtures/`
-   - 更新解析純函式並補上防回歸測試。
+   - 把新版樣本存入 `tests/fixtures/`
+   - 更新解析函式並補上防回歸測試。
 
 ---
 
