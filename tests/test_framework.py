@@ -405,6 +405,27 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("by `@claude-code`", unreleased)
         self.assertEqual(run(self.root, "git", "status", "--porcelain").stdout.strip(), "")
 
+    def test_moving_the_project_folder(self) -> None:
+        """Nothing tracked depends on the folder path: a moved / renamed project keeps a clean tree and passes check."""
+        moved = Path(self.tmp.name) / "elsewhere" / "renamed copy"
+        moved.parent.mkdir(parents=True)
+        shutil.move(str(self.root), str(moved))
+        self.assertEqual(run(moved, "scripts/agentctl.py", "tree", "--check").returncode, 0, "tree uses the project name, not the folder")
+        self.assertEqual(run(moved, "scripts/agentctl.py", "check").returncode, 0)
+        self.assertEqual(run(moved, "git", "status", "--porcelain").stdout.strip(), "")
+        self.assertEqual(run(moved, "git", "config", "core.hooksPath").stdout.strip(), ".agents/hooks", "hooks path is relative")
+        venv_bin = moved / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "mypy").write_text("#!/old/place/.venv/bin/python\nimport mypy\n", encoding="utf-8")
+        sys.path.insert(0, str(moved / ".agents" / "lib"))
+        import importlib
+
+        project_config = importlib.import_module("project_config")
+        self.assertTrue(project_config.venv_moved(moved), "a .venv built in another folder is detected")
+        (venv_bin / "mypy").write_text(f"#!{moved / '.venv' / 'bin' / 'python'}\nimport mypy\n", encoding="utf-8")
+        self.assertFalse(project_config.venv_moved(moved))
+        sys.path.pop(0)
+
     def test_logging_traces_runs_and_blocks_print(self) -> None:
         """The CLI logs to DATA_DIR/logs with a run id and line info; stdout keeps only the result; print in services is blocked."""
         data = Path(self.tmp.name) / "data"

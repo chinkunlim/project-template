@@ -131,18 +131,20 @@ def _format_line(entry: Path, rel_path: str, padding: str, is_last: bool, annota
     return f"{left}{' ' * max(1, NOTE_COLUMN - len(left))}# {note}"
 
 
-def build_tree_markdown(max_depth: int | None, annotations: dict[str, str], dirs_only: bool = False) -> str:
+def build_tree_markdown(max_depth: int | None, annotations: dict[str, str], dirs_only: bool = False, title: str = "") -> str:
     """Render the project tree as a fenced Markdown code block.
 
     Args:
         max_depth: Maximum depth (None = full tree).
         annotations: Map of repo-relative path -> short description.
         dirs_only: Show folders only.
+        title: Name on the first line: the project name from `.agents/project.toml`, not the folder
+            name, so moving / renaming the folder or a CI checkout does not change the tree.
 
     Returns:
         Markdown text starting with ```text.
     """
-    lines = [f"{ROOT.name}/"] + generate_tree_lines(ROOT, annotations, max_depth, dirs_only=dirs_only)
+    lines = [f"{title or ROOT.name}/"] + generate_tree_lines(ROOT, annotations, max_depth, dirs_only=dirs_only)
     return "```text\n" + "\n".join(lines) + "\n```"
 
 
@@ -194,6 +196,7 @@ def main() -> int:
     check_only = "--check" in sys.argv
     config = load_config(ROOT)
     annotations = {**ANNOTATIONS, **config["tree"].get("annotations", {})}
+    title = str(config["project"].get("name") or "")
     if not check_only and not PROJECT_TREE_FILE.exists():
         # Create the file first so the generated tree already lists it (otherwise the first run is stale).
         PROJECT_TREE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -201,10 +204,10 @@ def main() -> int:
     full_doc = (
         "# 專案完整檔案與資料夾結構樹 (PROJECT_TREE)\n\n"
         "> ⚠️ 本檔案由 `python3 scripts/agentctl.py tree` 自動產生，請勿手動編輯。\n\n"
-        f"{build_tree_markdown(None, annotations)}\n"
+        f"{build_tree_markdown(None, annotations, title=title)}\n"
     )
     changed = _write_if_changed(PROJECT_TREE_FILE, full_doc, check_only)
-    summary = build_tree_markdown(int(config["tree"]["agents_md_depth"]), annotations, dirs_only=True)
+    summary = build_tree_markdown(int(config["tree"]["agents_md_depth"]), annotations, dirs_only=True, title=title)
     changed = sync_agents_md(summary, check_only) or changed
     if check_only and changed:
         print("❌ 目錄樹尚未同步，請執行：python3 scripts/agentctl.py tree", file=sys.stderr)

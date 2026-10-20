@@ -235,6 +235,12 @@ def missing_tool_hint(part: str) -> str:
     """
     if "uv run" in part and not (ROOT / ".venv").exists():
         return "尚未建立 .venv"
+    if "uv run" in part:
+        sys.path.insert(0, str(ROOT / ".agents" / "lib"))
+        from project_config import venv_moved  # noqa: E402
+
+        if venv_moved(ROOT):
+            return "專案資料夾移動過，.venv 要重建（python3 scripts/agentctl.py doctor --fix）"
     folder = re.match(r"\(\s*cd\s+(\S+)\s*&&\s*pnpm\s", part)
     if folder and not (ROOT / folder.group(1) / "node_modules").exists():
         return f"尚未安裝 {folder.group(1)}/node_modules"
@@ -262,7 +268,8 @@ def run_configured(name: str) -> int:
     for part in split_commands(command):
         hint = missing_tool_hint(part)
         if hint:
-            print(f"ℹ️ 略過 {name}（{part}）：{hint}（先執行 python3 scripts/agentctl.py setup --install）")
+            fix = "" if "doctor --fix" in hint else "（先執行 python3 scripts/agentctl.py setup --install）"
+            print(f"ℹ️ 略過 {name}（{part}）：{hint}{fix}")
         else:
             runnable.append(part)
     if not runnable:

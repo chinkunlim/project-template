@@ -273,6 +273,7 @@ python3 scripts/agentctl.py doctor --fix
 3. 打開 `.env` 填入金鑰與設定（`.env` 不會被 commit）{"；App 的設定在 `mobile/.env`（會打包進 App，不放秘密）" if "mobile" in langs else ""}。
 {install_block}
 > 換電腦時：資料不在 git 裡，另外複製整個 `DATA_DIR`（路徑寫在 `.env`）。
+> 搬移或改名專案資料夾後：執行一次 `python3 scripts/agentctl.py doctor --fix`（重建記住舊位置的 `.venv`）。
 {python_note}
 ## 確認一切正常
 

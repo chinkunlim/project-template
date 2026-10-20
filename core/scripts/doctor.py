@@ -8,7 +8,8 @@ Purpose:
 
 Checks:
     FAIL (exit 1): Python < 3.9 (for these scripts), git missing, not a git repo, hooks not
-                   active, skills link missing, uv missing in a Python project.
+                   active, skills link missing, uv missing in a Python project, `.venv` created
+                   in another folder (project moved; `--fix` rebuilds it from uv.lock).
     WARN         : git user.name/email unset, `.env` missing, `.venv` missing or not on the
                    `.python-version` Python, no `uv.lock`, `node_modules` / `.clasp.json`
                    missing, go / cargo missing, no framework lock.
@@ -18,7 +19,8 @@ Checks:
 
 Usage:
     python3 scripts/agentctl.py doctor          # report only
-    python3 scripts/agentctl.py doctor --fix    # also activate hooks, rebuild skill links, create .env, create DATA_DIR
+    python3 scripts/agentctl.py doctor --fix    # also activate hooks, rebuild skill links, create .env, create DATA_DIR,
+                                                # rebuild .venv after the project folder was moved
 """
 from __future__ import annotations
 
@@ -33,7 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]  # .agents/bin/<script> -> project root
 sys.path.insert(0, str(ROOT / ".agents" / "lib"))
 
-from project_config import load_config  # noqa: E402
+from project_config import load_config, venv_moved  # noqa: E402
 
 HOOKS_DIR = ".agents/hooks"
 
@@ -204,8 +206,11 @@ def venv_python_version() -> str:
     return ""
 
 
-def check_python_env() -> list[tuple[str, str]]:
+def check_python_env(fix: bool = False) -> list[tuple[str, str]]:
     """Check the isolated Python environment (uv + project `.venv` + pinned version).
+
+    Args:
+        fix: Rebuild `.venv` from `uv.lock` when the project folder was moved.
 
     Returns:
         List of `(status, message)` results (empty for projects without `pyproject.toml`).
@@ -215,6 +220,15 @@ def check_python_env() -> list[tuple[str, str]]:
     if not shutil.which("uv"):
         return [("FAIL", "uv 未安裝（Python 專案一律用 uv；brew install uv 或官方安裝腳本，不要用全域 pip）")]
     results = [("OK", "uv 已安裝")]
+    if venv_moved(ROOT):
+        if not fix:
+            results.append(("FAIL", "專案資料夾移動過，.venv 裡的工具還指向舊位置（執行 agentctl doctor --fix 重建 .venv）"))
+        else:
+            shutil.rmtree(ROOT / ".venv")
+            synced = subprocess.run(["uv", "sync"] + (["--locked"] if (ROOT / "uv.lock").exists() else []), cwd=ROOT,
+                                    capture_output=True, text=True, check=False)
+            results.append(("OK", "專案資料夾移動過：已依 uv.lock 重建 .venv") if synced.returncode == 0
+                           else ("FAIL", f"重建 .venv 失敗：{synced.stderr.strip()[-200:]}"))
     pinned_file = ROOT / ".python-version"
     pinned = pinned_file.read_text(encoding="utf-8").strip() if pinned_file.exists() else ""
     actual = venv_python_version()
@@ -354,13 +368,16 @@ def check_brewfile() -> tuple[str, str]:
     return ("WARN", "Brewfile 有工具尚未安裝：brew bundle --file Brewfile")
 
 
-def check_toolchain() -> list[tuple[str, str]]:
+def check_toolchain(fix: bool = False) -> list[tuple[str, str]]:
     """Check language tools and the framework lock.
+
+    Args:
+        fix: Apply repairs that only touch this project (rebuild a moved `.venv`).
 
     Returns:
         List of `(status, message)` results.
     """
-    results = [*check_python_env(), *check_node_env(), *check_mobile_tools()]
+    results = [*check_python_env(fix), *check_node_env(), *check_mobile_tools()]
     results.append(check_brewfile())
     for marker, tool, hint in (("go.mod", "go", "需要 Go"), ("Cargo.toml", "cargo", "需要 Rust (cargo)")):
         if (ROOT / marker).exists():
@@ -381,7 +398,7 @@ def run_checks(fix: bool) -> list[tuple[str, str]]:
     """
     return [
         check_python(), *check_git(fix), *check_skill_links(fix), *check_env_file(fix), *check_data_dir(fix),
-        *check_toolchain(), *check_host_hygiene(),
+        *check_toolchain(fix), *check_host_hygiene(),
     ]
 
 

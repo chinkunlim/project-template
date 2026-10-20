@@ -144,6 +144,7 @@ my_app/
    - Python 一律用 uv：`.python-version`（3.11）+ uv 自己下載的直譯器 + `uv.lock` + 專案內 `.venv/`；不用全域 pip。
    - Node 版本寫在 `.nvmrc`、pnpm 版本寫在 `packageManager`（corepack）；工具（clasp 等）是 devDependencies，裝在專案內 `node_modules/`，用 `pnpm exec` 執行；不用 `npm -g`。
    - 型別檢查用 mypy（strict），和 ruff 一樣裝在專案 `.venv`。
+   - **路徑不寫死**：框架用相對位置找檔案，專案和母版資料夾都可以搬移或改名（`.agents/project.toml` 的專案名稱才是名字）。專案搬家後執行一次 `agentctl doctor --fix`：`.venv` 內的工具會記住舊位置，doctor 會依 `uv.lock` 重建。
    - 主機只需要 git、uv、nvm（Node + corepack pnpm）；手機 App 另需 Xcode 與 Android Studio（見第 0 節）。hook 納入版本控管；`.claude/skills` 由 `agentctl doctor --fix` 重建；`agentctl setup --install` 一鍵安裝。
 5. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（預設 `~/project-data/<專案>`，可放外接硬碟）；pre-commit 擋下 PDF、壓縮檔、資料庫與超過 10 MB 的檔案。
 6. **Git 安全**：commit 訊息一律英文；pre-push hook 擋下未經同意的 push（`ALLOW_PUSH=1` 才放行）；`agentctl pause` 中途離開、`agentctl finish` 專案完成驗收。

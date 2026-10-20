@@ -567,6 +567,35 @@ def _agent_from_tasks(project_root: Path, task_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def venv_moved(root: Path) -> bool:
+    """Tell whether the project `.venv` was created in another folder (the project was moved or copied).
+
+    Virtual environments store absolute paths in their launcher scripts (`.venv/bin/mypy`, ...),
+    so after moving a project those tools fail with "No such file or directory" even though
+    `uv run python` still works. The fix is to rebuild `.venv` from `uv.lock`.
+
+    Args:
+        root: Project root directory.
+
+    Returns:
+        True when a launcher in `.venv/bin` points to a different `.venv`.
+    """
+    bin_dir = root / ".venv" / "bin"
+    if not bin_dir.is_dir():
+        return False
+    here = {str(root / ".venv"), str((root / ".venv").resolve())}
+    for script in sorted(bin_dir.iterdir()):
+        if script.is_symlink() or not script.is_file():
+            continue
+        try:
+            head = script.read_bytes()[:600].decode("utf-8", errors="ignore")
+        except OSError:
+            continue
+        if head.startswith("#!") and "/.venv/bin/python" in head:
+            return not any(f"{h}/bin/python" in head for h in here)
+    return False
+
+
 def git_changed_files(root: Path) -> list[tuple[str, str]]:
     """List uncommitted changes as `(status, path)` pairs.
 
