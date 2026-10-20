@@ -25,9 +25,9 @@ Modes (Flask projects):
     Switch later with `python3 scripts/agentctl.py migration --develop`.
 
 Usage:
-    python3 migrate_project.py --from ~/projects/old_app --target ~/projects/old_app_v2
-    python3 migrate_project.py --from ~/projects/old_bot --target ~/projects/bot --stack python --with gas
-    python3 migrate_project.py --from ~/projects/old_api --target ~/projects/api_v2 --mode develop
+    python3 migrate_project.py --from ~/Desktop/project/old_app --target ~/Desktop/project/old_app_v2
+    python3 migrate_project.py --from ~/Desktop/project/old_bot --target ~/Desktop/project/bot --stack python --with gas
+    python3 migrate_project.py --from ~/Desktop/project/old_api --target ~/Desktop/project/api_v2 --mode develop
 """
 
 from __future__ import annotations

@@ -16,9 +16,9 @@ Purpose:
       - git repo with a version-controlled pre-commit hook (`core.hooksPath .agents/hooks`)
 
 Usage:
-    python3 init_project.py --target ~/projects/my_app --stack python
-    python3 init_project.py --target ~/projects/app --stack python --with web gas
-    python3 init_project.py --target ~/projects/web --stack node --skills legacy-migration
+    python3 init_project.py --target ~/Desktop/project/my_app --stack python
+    python3 init_project.py --target ~/Desktop/project/app --stack python --with web gas
+    python3 init_project.py --target ~/Desktop/project/web --stack node --skills legacy-migration
     python3 init_project.py --list-skills
 """
 
@@ -229,7 +229,9 @@ def build_readme_md(project_name: str, description: str, settings: dict | None =
                           ("Xcode / Android SDK", "mobile" in langs)) if need) + "（只修這個專案，不安裝全域工具）"
     install_what = "、".join(t for t, need in (("uv sync（專案內 `.venv/`）", "python" in langs),
                                              ("pnpm install（各資料夾內的 `node_modules/`）", bool({"node", "gas", "mobile"} & set(langs)))) if need)
-    guides = [f"- [`{path.format(pkg=pkg)}`]({path.format(pkg=pkg)}) — {desc}" for key, path, desc in README_GUIDES if key in langs]
+    guides = [f"- [`{path.format(pkg=pkg)}`]({path.format(pkg=pkg)}) — {desc}" for key, path, desc in README_GUIDES if key in langs[1:]]
+    if langs[:1] == ["gas"]:
+        guides.insert(0, "- [`GAS.md`](GAS.md) — Google Apps Script（測試、打包、clasp 推送）")  # gas as the base stack lives at the root
     python_note = (
         "\n新增 Python 套件：`uv add <套件>`（開發工具 `uv add --dev <套件>`）；執行程式：`uv run ...`。"
         "Python 版本由 uv 依 `.python-version` 自動下載，不會動到主機的 Python / pip。\n" if "python" in langs else ""

@@ -19,30 +19,30 @@
 
 ## 1. 建立新專案
 
-在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）
+在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）。專案建議都放在 `~/Desktop/project/` 底下：第 4 節的 `collect_feedback.py`、`update_all.py` 預設掃描這個資料夾（放別處時在指令後面加上該資料夾）。
 
 ```bash
 cd "$HOME/Desktop/project/01 project_template"
 ```
 
 ```bash
-python3 init_project.py --target ~/projects/my_app --stack python
+python3 init_project.py --target ~/Desktop/project/my_app --stack python
 ```
 
 Python + 網頁 + GAS
 
 ```bash
-python3 init_project.py --target ~/projects/my_app --stack python --with web gas
+python3 init_project.py --target ~/Desktop/project/my_app --stack python --with web gas
 ```
 
 手機 App（Android + iOS）＋ Python 後端；只有 App 時用 `--stack mobile`
 
 ```bash
-python3 init_project.py --target ~/projects/my_app --stack python --with api mobile
+python3 init_project.py --target ~/Desktop/project/my_app --stack python --with api mobile
 ```
 
 ```bash
-python3 init_project.py --target ~/projects/my_gas --stack gas
+python3 init_project.py --target ~/Desktop/project/my_gas --stack gas
 python3 init_project.py --list-skills
 ```
 
@@ -61,7 +61,7 @@ python3 init_project.py --list-skills
 1. 進入新專案，檢查並修復環境（啟用 git hook、建立 `.env` 與 DATA_DIR）：
 
 ```bash
-cd ~/projects/my_app && python3 scripts/agentctl.py doctor --fix
+cd ~/Desktop/project/my_app && python3 scripts/agentctl.py doctor --fix
 ```
 
 2. 打開 `.env` 填入金鑰；安裝依賴（只裝在專案內）：
@@ -81,7 +81,7 @@ python3 scripts/agentctl.py check
 ### 把舊專案搬進新結構
 
 ```bash
-python3 migrate_project.py --from ~/projects/old_app --target ~/projects/old_app_v2
+python3 migrate_project.py --from ~/Desktop/project/old_app --target ~/Desktop/project/old_app_v2
 ```
 
 - 舊專案**不會被修改**；新資料夾由舊 repo clone（保留 git 歷史），舊檔案以 `git mv` 放進 `legacy/`，再套用模板。
@@ -144,12 +144,12 @@ my_app/
    - Python 一律用 uv：`.python-version`（3.11）+ uv 自己下載的直譯器 + `uv.lock` + 專案內 `.venv/`；不用全域 pip。
    - Node 版本寫在 `.nvmrc`、pnpm 版本寫在 `packageManager`（corepack）；工具（clasp 等）是 devDependencies，裝在專案內 `node_modules/`，用 `pnpm exec` 執行；不用 `npm -g`。
    - 型別檢查用 mypy（strict），和 ruff 一樣裝在專案 `.venv`。
-   - 主機只需要 git、uv、nvm（Node + corepack pnpm）。hook 納入版本控管；`.claude/skills` 由 `agentctl doctor --fix` 重建；`agentctl setup --install` 一鍵安裝。
+   - 主機只需要 git、uv、nvm（Node + corepack pnpm）；手機 App 另需 Xcode 與 Android Studio（見第 0 節）。hook 納入版本控管；`.claude/skills` 由 `agentctl doctor --fix` 重建；`agentctl setup --install` 一鍵安裝。
 5. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（預設 `~/project-data/<專案>`，可放外接硬碟）；pre-commit 擋下 PDF、壓縮檔、資料庫與超過 10 MB 的檔案。
 6. **Git 安全**：commit 訊息一律英文；pre-push hook 擋下未經同意的 push（`ALLOW_PUSH=1` 才放行）；`agentctl pause` 中途離開、`agentctl finish` 專案完成驗收。
 7. **AGENTS.md**：「使用者說什麼 → 執行什麼」對照表；核心規則包括出示執行證據、與 ADR 衝突要先問、錯誤與決策即時記錄、通用規則回寫模板（`docs/TEMPLATE_FEEDBACK.md`）；專案特有規則寫 `docs/standards/PROJECT_RULES.md`（模板更新不會覆蓋）。
 8. **可擴充、可升級**：Skills 分 core / stack / optional（`skills/catalog.json`）；`agentctl update --from <母版>` 依 `framework.lock` 只更新未被專案修改的檔案，衝突檔另存 `*.template`。
-   - **從 v3.0 升級**：v3.1 把框架腳本從 `scripts/` 搬到 `.agents/bin/`、hooks 搬到 `.agents/hooks/`。`update` 會把舊的 `scripts/*.py` 列為「母版已移除」（不會自動刪除）；接著執行 `python3 scripts/agentctl.py doctor --fix` 切換 hooks，確認後再自行刪除舊檔。
+   - **從 v3.0 升級**：v3.1 把框架腳本從 `scripts/` 搬到 `.agents/bin/`、hooks 搬到 `.agents/hooks/`。`update` 會把舊的 `scripts/*.py` 列為「母版已移除」（不會自動刪除）；接著執行 `python3 scripts/agentctl.py doctor --fix` 切換 hooks（`tools/update_all.py --apply` 會自動做這一步），確認後再自行刪除舊檔。
 
 ---
 
