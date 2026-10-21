@@ -10,6 +10,9 @@ The template's version is the framework version that projects record in `.agents
 - feat(tools): every action tracks registered projects; add existing project and git fetch (by `@claude-code`)
 - feat(tools): Open WebUI tool can add existing projects and git fetch (by `@claude-code`)
 
+### Fixed
+- fix(migration): quote the Python path in migration --verify (by `@claude-code`)
+
 ### Documentation
 - docs: ADR-002 tracked projects and ISSUE-001 preview cannot read Desktop (by `@claude-code`)
 

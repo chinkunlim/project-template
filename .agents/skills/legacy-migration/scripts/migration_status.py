@@ -32,6 +32,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 
@@ -161,7 +162,8 @@ def verify() -> list[tuple[bool, str]]:
     return [
         (not legacy_files(), f"legacy/ 已清空（剩 {len(legacy_files())} 個檔案）"),
         (not leftovers, "沒有 pip / npm 遺留檔" + (f"：{', '.join(leftovers)}" if leftovers else "")),
-        (run(f"{sys.executable} scripts/agentctl.py check") == 0, "agentctl check 通過（註解、分層、秘密、lint、型別、目錄樹）"),
+        # the interpreter path may contain spaces, e.g. ".../01 project_template/.venv" (Refs: ISSUE-002)
+        (run(f"{shlex.quote(sys.executable)} scripts/agentctl.py check") == 0, "agentctl check 通過（註解、分層、秘密、lint、型別、目錄樹）"),
         (not test or run(test) == 0, f"測試通過（{test or '未設定 [commands] test'}）"),
         (all(t.get("status") == "done" for t in tasks), f"遷移任務卡全部完成（{sum(t.get('status') == 'done' for t in tasks)}/{len(tasks)}）"),
         (remaining == 0, f"MIGRATION.md 檔案清單全部打勾（☑ {done} / ☐ {remaining}）"),

@@ -15,6 +15,7 @@ import ast
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,7 @@ os.environ["TEMPLATE_SKIP_UV_LOCK"] = "1"  # unit tests stay offline; see UvInte
 _DATA_HOME = tempfile.TemporaryDirectory(prefix="template-test-data-")
 os.environ["DATA_DIR"] = _DATA_HOME.name  # tests never write into the user's real ~/project-data
 HAS_NODE = shutil.which("node") is not None
+PY_CMD = shlex.quote(sys.executable)  # for shell command strings: the path may contain spaces (e.g. "01 project_template/.venv")
 for _var in ("AI_AGENT_NAME", "CLAUDECODE", "GEMINI_CLI", "CURSOR_TRACE_ID", "WINDSURF_SESSION"):
     os.environ.pop(_var, None)
 
@@ -384,7 +386,7 @@ class WorkflowTest(unittest.TestCase):
         # Run the project's tests with this interpreter instead of `uv run` so unit tests stay offline
         toml = self.root / ".agents" / "project.toml"
         text = toml.read_text(encoding="utf-8")
-        text = text.replace('test = "uv run python -m unittest discover -s tests -v"', f'test = "{sys.executable} -m unittest discover -s tests -v"')
+        text = text.replace('test = "uv run python -m unittest discover -s tests -v"', f'test = "{PY_CMD} -m unittest discover -s tests -v"')
         toml.write_text(text, encoding="utf-8")
         run(self.root, "git", "commit", "-qam", "chore(test): offline test command\n\nAgent: test-harness")
 
@@ -765,7 +767,7 @@ class MigrationTest(unittest.TestCase):
         verify = lambda: run(self.new, "scripts/agentctl.py", "migration", "--verify")  # noqa: E731
         self.assertEqual(verify().returncode, 1)
         toml = self.new / ".agents" / "project.toml"
-        toml.write_text(toml.read_text(encoding="utf-8").replace("uv run python -m unittest", f"{sys.executable} -m unittest"), encoding="utf-8")
+        toml.write_text(toml.read_text(encoding="utf-8").replace("uv run python -m unittest", f"{PY_CMD} -m unittest"), encoding="utf-8")
         pkg = self.new / "src" / "shop_v2"
         run(self.new, "git", "mv", "legacy/utils.py", "src/shop_v2/services/pricing.py")
         (pkg / "services" / "pricing.py").write_text(

@@ -89,6 +89,8 @@ project_template/
 │   │   └── PROJECT_TREE.md                 # 完整檔案結構樹 (自動產生)
 │   ├── known-issues/                       # [已知問題庫] 一問題一檔案
 │   │   ├── 001-preview-desktop-tcc.md
+│   │   ├── 002-unquoted-python-path.md
+│   │   ├── 003-template-release-version.md
 │   │   ├── _TEMPLATE.md                    # 已知問題範本 (tracker_cli 會套用)
 │   │   └── KNOWN_ISSUES.md                 # 已知問題總表 (🔴/🟡/🟢)
 │   ├── specs/                              # [功能規格書] PRD / API Contract

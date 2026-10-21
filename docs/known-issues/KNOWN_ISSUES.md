@@ -14,3 +14,5 @@
 | ISSUE | 狀態 | 標題 | 現象 | 程式與測試 |
 |---|---|---|---|---|
 | [ISSUE-001](001-preview-desktop-tcc.md) | 🟡 已規避 (Mitigated) | Claude 瀏覽器預覽無法啟動 ~/Desktop 裡的網頁伺服器 | preview_start 啟動 template-web-ui 失敗：can't open file 'scripts/web_ui.py': [Errno 1] Operation not permitted | 無程式修改（macOS TCC）；規避方式見檔案；`WebUiIntegrationTest` 不受影響 |
+| [ISSUE-002](002-unquoted-python-path.md) | 🟢 已根治 (Resolved) | Python 路徑有空格時，migration --verify 的 check 失敗 | /bin/sh: /Users/limchinkun/Desktop/projects/01: No such file or directory | `.agents/skills/legacy-migration/scripts/migration_status.py`；`tests/test_framework.py`（`PY_CMD`、`MigrationTest`） |
+| [ISSUE-003](003-template-release-version.md) | 🟡 已規避 (Mitigated) | 母版 finish --tag 只更新 pyproject.toml，不更新 FRAMEWORK_VERSION 與 uv.lock | 發版後 pyproject 與 FRAMEWORK_VERSION 不一致，專案仍記錄舊框架版本，CI uv sync --locked 失敗 | 無程式修改；發版步驟見檔案；`TemplateLayoutTest`、CI `uv sync --locked` |
