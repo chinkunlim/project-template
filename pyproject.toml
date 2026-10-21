@@ -1,6 +1,6 @@
 [project]
 name = "project-template"
-version = "3.2.0"  # = FRAMEWORK_VERSION in .agents/lib/project_config.py
+version = "3.3.0"  # = FRAMEWORK_VERSION in .agents/lib/project_config.py
 description = "新專案母版：建立、遷移與更新使用同一套結構的專案。"
 readme = "README.md"
 requires-python = ">=3.11"

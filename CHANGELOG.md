@@ -6,6 +6,8 @@ The template's version is the framework version that projects record in `.agents
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-10-21
+
 ### Added
 - feat(tools): every action tracks registered projects; add existing project and git fetch (by `@claude-code`)
 - feat(tools): Open WebUI tool can add existing projects and git fetch (by `@claude-code`)
