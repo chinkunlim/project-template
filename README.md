@@ -37,6 +37,7 @@ python3 tools/web_ui.py
 | Open WebUI（OpenAPI，一般使用者） | ⚙ 設定 → Integrations → Tools → ➕，URL `http://127.0.0.1:8766`；或貼上 `tools/openwebui/project_template_tool.py` 當工具 |
 
 - 之後可以直接說「幫我建立一個叫 xxx 的 Python 專案，要有網頁」「列出我的專案」「預覽框架更新」。
+- 你說要網頁時，Agent 會先依 `standards/LOCAL_AI_ENVIRONMENT.md` 的清單確認需求（誰用、哪些動作會改資料、接哪些 AI 工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請你確認後才建立。這份文件也記錄這台電腦的 AI 工具與埠號，每個新專案都會有一份。
 - **會修改檔案的工具（建立、遷移、doctor --fix、安裝依賴、更新框架）一定先列出要執行的指令，你同意後才會執行**（`confirm`）。
 - Open WebUI 在 Docker 時：網頁加 `--allow-host host.docker.internal`，網址改成 `http://host.docker.internal:8766`。
 - API 說明：[`tools/web/API.md`](tools/web/API.md)；互動文件：http://127.0.0.1:8766/docs 。

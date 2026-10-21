@@ -165,6 +165,19 @@ class ScaffoldTest(unittest.TestCase):
         scaffold_project(target, "existing", stack="generic", force=True)
         self.assertEqual(run(target, "git", "log", "--oneline").stdout.strip(), "", "no automatic commit into an existing folder")
 
+    def test_every_project_knows_the_local_ai_tools(self) -> None:
+        """Every project gets LOCAL_AI_ENVIRONMENT.md; AGENTS.md and the other entry files say to confirm web requests with it."""
+        for stack in ("python", "generic"):
+            target = self.base / f"ai_{stack}"
+            scaffold_project(target, f"ai_{stack}", stack=stack, init_git_repo=False)
+            guide = (target / "docs" / "standards" / "LOCAL_AI_ENVIRONMENT.md").read_text(encoding="utf-8")
+            for needle in ("127.0.0.1:8080", "11434", "確認需求", "confirm"):
+                self.assertIn(needle, guide, stack)
+            for rel in ("AGENTS.md", "GEMINI.md"):
+                text = (target / rel).read_text(encoding="utf-8")
+                self.assertIn("LOCAL_AI_ENVIRONMENT.md", text, rel)
+                self.assertIn("確認需求", text, rel)
+
     def test_mobile_addon_layout_rules_and_offline_tests(self) -> None:
         """`--with mobile` adds a layered Expo app, its rules, CI, Brewfile, and blocks signing keys; `--stack mobile` is app-only."""
         target = self.base / "phone"

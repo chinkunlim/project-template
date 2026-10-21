@@ -70,6 +70,8 @@ GUIDE = """# 讓其他 AI 工具使用這個專案（INTEGRATIONS）
 | MCP（Streamable HTTP） | 同一個伺服器的 http://127.0.0.1:{port}/mcp | Open WebUI、支援 HTTP MCP 的 Agent |
 | MCP（stdio） | `uv run {dist}-mcp`（Agent 自己啟動，不用先開伺服器） | Claude Code、Claude Desktop、Antigravity、OpenCode、Cursor、VS Code |
 
+這台電腦有哪些 AI 工具、埠號與已知陷阱：[`standards/LOCAL_AI_ENVIRONMENT.md`](standards/LOCAL_AI_ENVIRONMENT.md)。
+
 新增功能時：先寫在 `services`，再在 HTTP 路由（`entrypoints/http/app.py`）與 MCP 工具（`entrypoints/mcp_server.py`）各接一次，讓網頁、API 和 Agent 的結果永遠一致。會修改或刪除資料的 MCP 工具一定要有 `confirm` 參數，沒有使用者同意就拒絕。
 
 ## 自動偵測（打開專案就有）
