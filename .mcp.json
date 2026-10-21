@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "project-template": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PROJECT_DIR:-.}/tools/template_mcp.py"
+      ]
+    }
+  }
+}

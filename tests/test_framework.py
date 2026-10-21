@@ -962,13 +962,21 @@ class RulesAndSafetyTest(unittest.TestCase):
         self.assertEqual(review_guard.file_size_issues("x\n" * 3, "a.py", quality), [])
 
     def test_doctor_data_dir_checks(self) -> None:
-        """DATA_DIR inside the project warns; --fix creates the standard sub-folders outside."""
+        """DATA_DIR inside the project warns; --fix creates the sub-folders; the project's .env beats an inherited DATA_DIR."""
         outside = Path(self.tmp.name) / "data-home"
-        res = run(self.root, ".agents/bin/doctor.py", "--fix", env={"DATA_DIR": str(outside)})
+        (self.root / ".env").write_text(f"DATA_DIR={outside}\n", encoding="utf-8")
+        shell = Path(self.tmp.name) / "open-webui-data"
+        res = run(self.root, ".agents/bin/doctor.py", "--fix", env={"DATA_DIR": str(shell)})
         self.assertTrue((outside / "needs_review").is_dir())
+        self.assertFalse(shell.exists(), "an inherited DATA_DIR (e.g. Open WebUI's) never redirects the project")
+        self.assertIn("已忽略終端機的 DATA_DIR", res.stdout)
         self.assertIn("與程式分開", res.stdout)
-        inside = run(self.root, ".agents/bin/doctor.py", env={"DATA_DIR": str(self.root / "data")})
+        (self.root / ".env").write_text("DATA_DIR=data\n", encoding="utf-8")
+        inside = run(self.root, ".agents/bin/doctor.py")
         self.assertIn("DATA_DIR 在專案資料夾內", inside.stdout)
+        code = "from safe.config.settings import load_config; print(load_config().data_dir)"
+        got = run(self.root, sys.executable, "-c", code, env={"PYTHONPATH": str(self.root / "src"), "DATA_DIR": str(shell)})
+        self.assertEqual(Path(got.stdout.strip()), (self.root / "data").resolve(), got.stderr)
 
     def test_project_rules_survive_update_and_finish_reports(self) -> None:
         """PROJECT_RULES.md is project-owned (not overwritten); finish reports open items."""
@@ -1053,7 +1061,7 @@ class CollectFeedbackTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             for rel, rows in (("books", ["| 2026-10-21 | run 指令 | 對話 | 待決定 |", "| 2026-10-22 | 頁數 \\| 耗時 | TASK-4 | 已採用 |"]),
-                              ("group/phone", ["| 2026-10-20 | 離線模式 | 對話 |  |"])):
+                              ("group/phone", ["| 2026-10-20 | 離線模式 | 對話 |  |", "| 2026-10-19 | 舊建議 | 對話 | 已採用（母版 v3.1） |"])):
                 scaffold_project(base / rel, rel.split("/")[-1], stack="generic", init_git_repo=False)
                 feedback = base / rel / "docs" / "TEMPLATE_FEEDBACK.md"
                 feedback.write_text(feedback.read_text(encoding="utf-8") + "\n".join(rows) + "\n", encoding="utf-8")
@@ -1110,94 +1118,128 @@ class UpdateAllTest(unittest.TestCase):
             self.assertEqual(run(tpl, "tools/update_all.py", str(base / "projects")).returncode, 1, "dirty template is refused")
 
 
-class WebUiTest(unittest.TestCase):
-    """tools/web_ui.py: local-only API that runs the same command-line tools."""
+class TemplateServiceTest(unittest.TestCase):
+    """tools/template_service.py: the actions behind the page, the API and the MCP server."""
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Start the web app on a free port in a background thread."""
+        """Import the service module."""
         sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
         import importlib
-        import threading
-        from http.server import ThreadingHTTPServer
 
-        cls.web = importlib.import_module("web_ui")
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), cls.web.Handler)
-        cls.port = cls.server.server_address[1]
-        cls.web.Handler.allowed_hosts = {f"127.0.0.1:{cls.port}", f"localhost:{cls.port}"}
-        cls.web.Handler.allowed_origins = {f"http://127.0.0.1:{cls.port}"}
-        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.ts = importlib.import_module("template_service")
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        """Stop the web app."""
-        cls.server.shutdown()
-        cls.server.server_close()
+    def test_validation(self) -> None:
+        """Bad names, existing folders, python-only add-ons and foreign folders are refused before anything runs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            for body in ({"name": "../evil", "parent": tmp}, {"name": "x", "parent": "relative"},
+                         {"name": "x", "parent": tmp, "stack": "node", "addons": ["api"]},
+                         {"name": "x", "parent": tmp, "skills": ["no-such-skill"]}):
+                with self.assertRaises(ValueError, msg=body):
+                    self.ts.create_steps(body)
+            (parent / "taken").mkdir()
+            (parent / "taken" / "file.txt").write_text("x", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                self.ts.create_steps({"name": "taken", "parent": tmp})
+            with self.assertRaises(ValueError):
+                self.ts.project_command_steps({"path": tmp, "command": "status"})
+            title, steps = self.ts.create_steps({"name": "ok", "parent": tmp, "addons": ["api"], "setup": True})
+            self.assertEqual([s[0][-2:] for s in steps[1:]], [["doctor", "--fix"], ["setup", "--install"]])
 
-    def call(self, method: str, path: str, body: dict | None = None, headers: dict | None = None) -> tuple[int, object]:
-        """Send one request to the web app.
-
-        Args:
-            method: HTTP method.
-            path: Request path.
-            body: JSON body.
-            headers: Extra headers (e.g. a foreign Host or Origin).
-
-        Returns:
-            Tuple of status code and decoded JSON.
-        """
-        import urllib.error
-        import urllib.request
-
-        data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data, method=method,
-                                     headers={"Content-Type": "application/json", **(headers or {})})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as res:
-                return res.status, json.loads(res.read() or b"null")
-        except urllib.error.HTTPError as exc:
-            return exc.code, json.loads(exc.read() or b"null")
-
-    def wait_job(self) -> dict:
-        """Wait until the current job finishes.
-
-        Returns:
-            The finished job.
-        """
-        for _ in range(240):
-            _, job = self.call("GET", "/api/job")
-            if job and job["state"] != "running":
-                return job
-            time.sleep(0.5)
-        self.fail("job did not finish")
-
-    def test_local_only_guards(self) -> None:
-        """A foreign Host (DNS rebinding) and a foreign Origin on POST (CSRF) are refused."""
-        self.assertEqual(self.call("GET", "/api/info")[0], 200)
-        self.assertEqual(self.call("GET", "/api/info", headers={"Host": "evil.example"})[0], 403)
-        self.assertEqual(self.call("POST", "/api/data-preview", {}, headers={"Origin": "http://evil.example"})[0], 403)
-        self.assertEqual(self.call("POST", "/api/data-preview", {"name": "x", "parent": "/tmp"},
-                                   headers={"Origin": f"http://127.0.0.1:{self.port}"})[0], 200)
-
-    def test_create_project_from_the_page(self) -> None:
-        """Creating through the API runs init + doctor, stores DATA_DIR relative, and ignores an inherited DATA_DIR."""
+    def test_create_job_uses_the_projects_own_data_dir(self) -> None:
+        """A create job runs init + doctor; an inherited DATA_DIR (e.g. Open WebUI's) is not passed on."""
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp) / "projects"
             parent.mkdir()
-            status, preview = self.call("POST", "/api/data-preview", {"name": "web demo", "parent": str(parent)})
-            self.assertEqual(preview["stored"], "../../projects-data/web-demo")
-            self.assertEqual(self.call("POST", "/api/create", {"name": "../evil", "parent": str(parent)})[0], 400)
-            self.assertEqual(self.call("POST", "/api/create", {"name": "x", "parent": str(parent), "stack": "node", "addons": ["api"]})[0], 400)
-            status, started = self.call("POST", "/api/create", {"name": "web demo", "parent": str(parent), "stack": "generic", "doctor": True})
-            self.assertEqual(status, 202, started)
-            job = self.wait_job()
-            self.assertEqual(job["state"], "done", "\n".join(job["log"]))
-            project = parent / "web demo"
-            self.assertIn("DATA_DIR=../../projects-data/web-demo", (project / ".env.example").read_text(encoding="utf-8"))
-            self.assertTrue((Path(tmp) / "projects-data" / "web-demo" / "input").is_dir(), "doctor used the project's .env, not the inherited DATA_DIR")
-            status, rows = self.call("GET", "/api/projects?root=" + urllib_quote(str(parent)))
-            self.assertEqual([r["name"] for r in rows], ["web demo"])
-            self.assertEqual(self.call("POST", "/api/create", {"name": "web demo", "parent": str(parent)})[0], 400, "existing folder is refused")
+            preview = self.ts.data_preview({"name": "svc demo", "parent": str(parent)})
+            self.assertEqual(preview["stored"], "../../projects-data/svc-demo")
+            job = self.ts.wait_for(self.ts.RUNNER.start(*self.ts.create_steps({"name": "svc demo", "parent": str(parent), "stack": "generic"})))
+            self.assertEqual(job.state, "done", "\n".join(job.log))
+            self.assertTrue((Path(tmp) / "projects-data" / "svc-demo" / "input").is_dir())
+            self.assertEqual([r["name"] for r in self.ts.list_projects(parent)], ["svc demo"])
+
+
+@unittest.skipUnless(os.environ.get("TEMPLATE_UV_TESTS") and shutil.which("uv"), "set TEMPLATE_UV_TESTS=1 (needs uv + network)")
+class WebUiIntegrationTest(unittest.TestCase):
+    """The real tools/web_ui.py (FastAPI via uv) and the MCP server, as agents and Open WebUI use them."""
+
+    def test_page_api_and_mcp(self) -> None:
+        """Guards, confirm, a create through the API, and MCP over HTTP and stdio."""
+        import socket
+        import urllib.error
+        import urllib.request
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        env = {k: v for k, v in os.environ.items() if k != "DATA_DIR"}
+        server = subprocess.Popen([sys.executable, str(TEMPLATE_ROOT / "tools" / "web_ui.py"), "--no-browser", "--port", str(port)],
+                                  env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        base = f"http://127.0.0.1:{port}"
+
+        def call(method: str, path: str, body: dict | None = None, headers: dict | None = None) -> tuple[int, object]:
+            """Send one request.
+
+            Args:
+                method: HTTP method.
+                path: Request path.
+                body: JSON body.
+                headers: Extra headers.
+
+            Returns:
+                Status and decoded JSON.
+            """
+            data = json.dumps(body).encode() if body is not None else None
+            req = urllib.request.Request(base + path, data=data, method=method, headers={"Content-Type": "application/json", **(headers or {})})
+            try:
+                with urllib.request.urlopen(req, timeout=60) as res:
+                    return res.status, json.loads(res.read() or b"null")
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read() or b"null")
+
+        try:
+            for _ in range(240):
+                try:
+                    if call("GET", "/api/info")[0] == 200:
+                        break
+                except OSError:
+                    time.sleep(0.5)
+            self.assertEqual(call("GET", "/api/info", headers={"Host": "evil.example"})[0], 403)
+            self.assertEqual(call("POST", "/api/data-preview", {}, headers={"Origin": "http://evil.example"})[0], 403)
+            with tempfile.TemporaryDirectory() as tmp:
+                parent = Path(tmp) / "projects"
+                parent.mkdir()
+                body = {"name": "web made", "parent": str(parent), "stack": "generic"}
+                self.assertEqual(call("POST", "/api/create", body)[0], 428, "changes need confirm")
+                self.assertEqual(call("POST", "/api/create", {**body, "confirm": True})[0], 202)
+                for _ in range(240):
+                    job = call("GET", "/api/job")[1]
+                    if job and job["state"] != "running":
+                        break
+                    time.sleep(0.5)
+                self.assertEqual(job["state"], "done", "\n".join(job["log"]))
+                client = (
+                    "import asyncio, sys\nfrom mcp import Client, StdioServerParameters\n"
+                    "async def main():\n"
+                    f"    async with Client('{base}/mcp') as c:\n"
+                    "        print(sorted(t.name for t in (await c.list_tools()).tools))\n"
+                    f"        r = await c.call_tool('list_projects', {{'folder': {str(parent)!r}}})\n"
+                    "        print([p['name'] for p in r.structured_content['result']])\n"
+                    f"    async with Client(StdioServerParameters(command={sys.executable!r}, args=[{str(TEMPLATE_ROOT / 'tools' / 'template_mcp.py')!r}])) as c:\n"
+                    f"        r = await c.call_tool('create_project', {{'name': 'x', 'folder': {str(parent)!r}}})\n"
+                    "        print(r.content[0].text.splitlines()[0])\n"
+                    "asyncio.run(main())\n"
+                )
+                out = subprocess.run(["uv", "run", "--quiet", "--no-project", "--python", "3.11", "--with", "mcp==2.3.0", "python", "-c", client],
+                                     capture_output=True, text=True, env=env, timeout=300)
+                self.assertIn("create_project", out.stdout, out.stderr)
+                self.assertIn("['web made']", out.stdout)
+                self.assertIn("Not run yet", out.stdout, "MCP changes need confirm")
+                self.assertFalse((parent / "x").exists())
+        finally:
+            server.terminate()
+            server.wait(timeout=30)
 
 
 def urllib_quote(text: str) -> str:

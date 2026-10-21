@@ -96,6 +96,10 @@ def build_agents_md(project_name: str, description: str, languages: list[str] | 
         `sync_agent_adapters.py` and `update_tree.py`.
     """
     langs = languages or []
+    integrations_link = "（各工具怎麼接：[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md)）" if "api" in langs else ""
+    integrations_row = (
+        "\n| 讓 AI 工具使用本專案（Open WebUI、Claude Code、Antigravity、OpenCode…） | `docs/INTEGRATIONS.md`、`.mcp.json` 等設定檔 | 建立專案時產生 |"
+    ) if "api" in langs else ""
     mobile_rule = (
         "手機 App 預設在 iOS 模擬器 / Android 模擬器測試（`adb reverse` 轉接後端 port）；用真的手機時只用 `expo start --tunnel`，"
         "後端不開放到網路（見 `mobile/MOBILE.md`）。"
@@ -129,6 +133,7 @@ def build_agents_md(project_name: str, description: str, languages: list[str] | 
 | 「結束對話」「收工」「今天先這樣」 | `python3 scripts/agentctl.py closeout --agent <名字> --goal ... --decisions ... --issues ... --next ...` |
 | 「推上去」 | 先列出未推送的 commit 並**確認**，同意後才 `agentctl commit --push` |
 | 「出版本」「專案完成了」 | `python3 scripts/agentctl.py finish`（驗收清單）；要發布再加 `--tag`（Unreleased → 新版本 + 本機 tag） |
+| 「做一個網頁」「給 Open WebUI / Agent 用」 | FastAPI + MCP（核心規則 13、[`ARCHITECTURE_RULES.md`](docs/standards/ARCHITECTURE_RULES.md) §3）；專案沒有 `api` 時先問使用者，再依 §3 加上 |
 | 「環境怪怪的」「換電腦了」 | `python3 scripts/agentctl.py doctor --fix` |
 
 ## 2. 核心規則（必須遵守）
@@ -145,6 +150,7 @@ def build_agents_md(project_name: str, description: str, languages: list[str] | 
 10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
 11. **通用規則回寫母版**：使用者提出「以後每個專案都要這樣」的規則時，寫進 [`docs/TEMPLATE_FEEDBACK.md`](docs/TEMPLATE_FEEDBACK.md)，由使用者決定是否更新專案模板；只適用本專案的規則寫進 [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
 12. **Log 追蹤**：執行的開始與結束、外部呼叫、跳過與重試、例外都要記 log，不記秘密與個資。{log_how}（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
+13. **網頁一定要能給 AI 工具用**：使用者要網頁、API，或要讓 Open WebUI / Ollama / 其他 Agent 使用時，一律用 FastAPI（`--with api`），不要做單純的網頁。同一組 `services` 由三個入口呼叫：HTTP 路由（OpenAPI 給 Open WebUI）、MCP 工具（`entrypoints/mcp_server.py`，給 Claude Code、Antigravity、OpenCode、Cursor、Open WebUI）與網頁。新增功能時三個入口一起接；會修改或刪除資料的 MCP 工具要有 `confirm` 參數{integrations_link}。
 <!-- RULES_END -->
 
 ## 2.5 Agent 分工（選填，由使用者維護）
@@ -167,7 +173,7 @@ def build_agents_md(project_name: str, description: str, languages: list[str] | 
 | 版本變更 | `CHANGELOG.md` | commit 寫入 Unreleased；`finish --tag` 發布 |
 | 設定 / 環境變數範本 | `.agents/project.toml` / `.env.example` | 手動 |
 | 資料（輸入、輸出、資料庫、log） | `.env` 的 `DATA_DIR`（專案資料夾之外） | 程式執行時產生 |
-| 給專案模板的改進建議 | `docs/TEMPLATE_FEEDBACK.md` | Agent 記錄，使用者決定 |
+| 給專案模板的改進建議 | `docs/TEMPLATE_FEEDBACK.md` | Agent 記錄，使用者決定 |{integrations_row}
 
 **命名規則**：整個專案只有根目錄一份 `README.md`；每個 `docs/` 子資料夾用全大寫的說明/總表檔（如 `KNOWN_ISSUES.md`），新增紀錄時照同資料夾的 `_TEMPLATE.md` 格式寫。
 

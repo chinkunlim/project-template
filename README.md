@@ -17,7 +17,7 @@
 
 ---
 
-## 1. 用網頁操作（建議）
+## 1. 用網頁或 AI 工具操作（建議）
 
 所有功能都有網頁版：建立專案（名稱、位置、資料資料夾、語言、附加功能、skills）、遷移舊專案、查看專案並執行 doctor / check / 安裝依賴、彙整改進建議、更新所有專案的框架。網頁執行的就是下面這些指令，並顯示完整輸出。
 
@@ -25,21 +25,21 @@
 python3 tools/web_ui.py
 ```
 
-會打開 http://127.0.0.1:8766 （只綁本機；`--port` 改埠號）。「選擇…」按鈕會開啟 macOS 的資料夾選擇視窗。
+會打開 http://127.0.0.1:8766 （只綁本機；`--port` 改埠號）。「選擇…」按鈕會開啟 macOS 的資料夾選擇視窗。網頁用 FastAPI；第一次執行時會自動透過 `uv run --with fastapi,uvicorn,mcp` 建立暫存環境（在 uv 的快取，不安裝到主機）。
 
-**Open WebUI（Ollama）工具**：和 literature-fetch 相同的作法。
+**讓 AI 工具使用母版**（同一組功能，三種接法）：
 
-1. 執行網頁（Open WebUI 在 Docker 時加上 `--allow-host host.docker.internal`）：
+| 工具 | 怎麼接 |
+|---|---|
+| Claude Code、OpenCode、Antigravity CLI | 在母版資料夾內使用即可：`.mcp.json`、`opencode.json`、`.agents/mcp_config.json` 會啟動 `python3 tools/template_mcp.py`（MCP stdio）。Claude Code 第一次會問是否允許 |
+| Claude Desktop、Antigravity App、其他資料夾 | 在該工具的 MCP 設定加入 command `python3`、args `<母版資料夾>/tools/template_mcp.py` |
+| Open WebUI（MCP，管理員） | 先執行網頁，再到 ⚙ 設定 → 管理員 → Integrations → External Tool Servers → MCP (Streamable HTTP)，URL `http://127.0.0.1:8766/mcp` |
+| Open WebUI（OpenAPI，一般使用者） | ⚙ 設定 → Integrations → Tools → ➕，URL `http://127.0.0.1:8766`；或貼上 `tools/openwebui/project_template_tool.py` 當工具 |
 
-```bash
-python3 tools/web_ui.py --allow-host host.docker.internal
-```
-
-2. Open WebUI → Workspace → Tools → 新增，貼上 `tools/openwebui/project_template_tool.py` 的內容。
-3. 工具設定（Valves）的 `base_url`：Docker 用 `http://host.docker.internal:8766`，非 Docker 用 `http://127.0.0.1:8766`；`projects_folder` 留空 = 母版所在的資料夾。
-4. 之後可以直接說「幫我建立一個叫 xxx 的 Python 專案，加上 API」「列出我的專案」「預覽框架更新」。更新框架一定要你確認後才會執行。
-
-API 說明：[`tools/web/API.md`](tools/web/API.md)。
+- 之後可以直接說「幫我建立一個叫 xxx 的 Python 專案，要有網頁」「列出我的專案」「預覽框架更新」。
+- **會修改檔案的工具（建立、遷移、doctor --fix、安裝依賴、更新框架）一定先列出要執行的指令，你同意後才會執行**（`confirm`）。
+- Open WebUI 在 Docker 時：網頁加 `--allow-host host.docker.internal`，網址改成 `http://host.docker.internal:8766`。
+- API 說明：[`tools/web/API.md`](tools/web/API.md)；互動文件：http://127.0.0.1:8766/docs 。
 
 ---
 
@@ -221,7 +221,8 @@ python3 scripts/agentctl.py update --from "../01 project_template"
 ├── core/scripts/             # → 新專案 .agents/bin/（框架腳本，由 agentctl 呼叫）
 ├── core/hooks/               # → 新專案 .agents/hooks/（core.hooksPath）
 ├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
-├── tools/                    # 只留在母版：web_ui.py + web/（網頁與 JSON API）、openwebui/（Open WebUI 工具）、
+├── tools/                    # 只留在母版：web_ui.py + web/（FastAPI 網頁、JSON API、/mcp）、template_mcp.py（MCP stdio）、
+│                             #   template_service.py（共用動作）、openwebui/（Open WebUI 工具）、
 │                             #   collect_feedback.py（彙整改進建議）、update_all.py（一次更新所有專案）、sync_github_skills.py
 ├── standards/                # → 新專案 docs/standards/
 ├── packs/                    # 語言範本：python / api / db / ollama / evals / web / gas / mobile / other_packs、stack_config（project.toml、.gitignore、CI）、migration_plan、docs_templates

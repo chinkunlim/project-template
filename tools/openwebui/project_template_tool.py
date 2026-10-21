@@ -9,9 +9,11 @@ description: Create projects, migrate old projects, list projects and run doctor
 
 # Open WebUI tool for the project template (same pattern as literature-fetch ADR-008).
 # It calls the JSON API of tools/web_ui.py; nothing else is needed inside Open WebUI (standard library only).
-# Open WebUI in Docker: set the valve base_url to http://host.docker.internal:8766 and start the web app with
+# Alternatives without pasting code: add http://127.0.0.1:8766 as an OpenAPI tool server, or (admin)
+# http://127.0.0.1:8766/mcp as an MCP (Streamable HTTP) connection.
+# Native Open WebUI (uv tool install, 127.0.0.1:8080): base_url http://127.0.0.1:8766 (default).
+# Open WebUI in Docker: base_url http://host.docker.internal:8766 and start the app with
 #   python3 tools/web_ui.py --allow-host host.docker.internal
-# Native Open WebUI: base_url http://127.0.0.1:8766.
 
 from __future__ import annotations
 
@@ -31,8 +33,8 @@ class Tools:
         """Settings shown in Open WebUI."""
 
         base_url: str = Field(
-            default="http://host.docker.internal:8766",
-            description="Address of the template web app (native Open WebUI: http://127.0.0.1:8766)",
+            default="http://127.0.0.1:8766",
+            description="Address of the template web app (Open WebUI in Docker: http://host.docker.internal:8766)",
         )
         projects_folder: str = Field(
             default="",
@@ -112,7 +114,7 @@ class Tools:
         return "\n".join(lines) or "No projects found."
 
     def create_project(self, name: str, stack: str = "python", addons: str = "", folder: str = "", data_dir: str = "",
-                       description: str = "", install: bool = False) -> str:
+                       description: str = "", install: bool = False, confirm: bool = False) -> str:
         """
         Create a new project from the template (folders, docs, agent rules, git with a first commit), then repair its
         environment. Runs in the background; ask for the job status afterwards.
@@ -123,22 +125,27 @@ class Tools:
         :param data_dir: Absolute data folder; empty = projects-data/<name> next to the projects folder.
         :param description: One-line description of the project.
         :param install: Also install the dependencies inside the project (needs internet).
+        :param confirm: Must be True; first describe the project to the user and call with confirm=True after they agree.
         :return: Whether the job started, with the commands it runs.
         """
+        if not confirm:
+            return (f"Not created yet. Tell the user: project '{name}' (stack {stack}, add-ons {addons or 'none'}) will be "
+                    "created with git, docs and agent rules. Call again with confirm=True after they agree.")
         info = self._call("GET", "/api/info")
         if isinstance(info, str):
             return info
         body = {
             "name": name, "parent": folder or self.valves.projects_folder or info["projects_root"], "data_dir": data_dir,
             "stack": stack, "addons": [a.strip() for a in addons.split(",") if a.strip()], "description": description,
-            "doctor": True, "setup": install, "check": True,
+            "doctor": True, "setup": install, "check": True, "confirm": True,
         }
         result = self._call("POST", "/api/create", body)
         if isinstance(result, str):
             return result
         return f"Started: {result['title']}.\nCommands:\n" + "\n".join(result["commands"]) + "\nAsk for the job status to follow it."
 
-    def migrate_project(self, source: str, name: str = "", folder: str = "", mode: str = "maintain") -> str:
+    def migrate_project(self, source: str, name: str = "", folder: str = "", mode: str = "maintain",
+                        confirm: bool = False) -> str:
         """
         Migrate an old project into a new folder that follows the template. The old project is never changed; git history
         is kept, old files go to legacy/ and docs/migration/MIGRATION.md lists the batches. Runs in the background.
@@ -146,13 +153,16 @@ class Tools:
         :param name: New project name; empty = the old folder name.
         :param folder: Absolute folder to create the new project in; empty = the projects folder.
         :param mode: maintain (finished project, keep Flask) or develop (continue development, rewrite Flask as FastAPI).
+        :param confirm: Must be True; first tell the user what will happen and call with confirm=True after they agree.
         :return: Whether the job started.
         """
+        if not confirm:
+            return f"Not migrated yet. Tell the user {source} will be copied into a new project (the old one is not changed); call again with confirm=True after they agree."
         info = self._call("GET", "/api/info")
         if isinstance(info, str):
             return info
         body = {"source": source, "name": name or source.rstrip("/").split("/")[-1],
-                "parent": folder or self.valves.projects_folder or info["projects_root"], "mode": mode}
+                "parent": folder or self.valves.projects_folder or info["projects_root"], "mode": mode, "confirm": True}
         result = self._call("POST", "/api/migrate", body)
         return result if isinstance(result, str) else f"Started: {result['title']}. Ask for the job status to follow it."
 
@@ -172,9 +182,11 @@ class Tools:
         """
         Run a framework command in one project and return its output.
         :param project: Project name (from list_projects) or absolute path.
-        :param command: status, doctor, doctor-fix (repair), setup (install dependencies) or check (quality gates).
+        :param command: status, doctor, check (read only), doctor-fix (repair) or setup (install dependencies).
         :return: The command output.
         """
+        if command in ("doctor-fix", "setup"):
+            return f"`{command}` changes files; ask the user and run it from the template web page (or MCP with confirm)."
         path = project
         if not project.startswith("/"):
             rows = self._call("GET", "/api/projects?" + self._root_query())
@@ -227,7 +239,7 @@ class Tools:
         """
         if not confirm:
             return "Not applied. Show the user this preview and ask before calling again with confirm=True:\n" + self.preview_framework_update()
-        body = {"commit": commit, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
+        body = {"commit": commit, "confirm": True, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
         started = self._call("POST", "/api/update/apply", body)
         if isinstance(started, str):
             return started

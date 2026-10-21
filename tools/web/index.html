@@ -2,7 +2,8 @@
 <!--
   Project template web page: create a project (name, location, data folder, stack, add-ons, skills),
   migrate an old project, run doctor / check / setup on existing projects, collect template feedback
-  and preview / apply the framework update. Talks to the local JSON API of tools/web_ui.py (/api/*).
+  and preview / apply the framework update. Talks to the local JSON API of tools/web_ui.py (/api/*);
+  changing requests carry confirm=true because the user clicked the button.
 -->
 <html lang="zh-Hant">
 <head>
@@ -442,7 +443,11 @@ function drawProjects(rows) {
     <td><div class="row">${actions.map(([c, t]) => `<button class="small" data-cmd="${c}" data-path="${esc(r.path)}">${t}</button>`).join("")}
       ${INFO.native_picker ? `<button class="small" data-reveal="${esc(r.path)}">Finder</button>` : ""}</div></td></tr>`).join("");
   $("p-table").querySelectorAll("[data-cmd]").forEach((b) => {
-    b.onclick = () => startJob("/api/project-command", { path: b.dataset.path, command: b.dataset.cmd }, "p-msg");
+    b.onclick = () => {
+      const writes = ["doctor-fix", "setup"].includes(b.dataset.cmd);
+      if (writes && !confirm(`在 ${b.dataset.path} 執行 agentctl ${b.dataset.cmd.replace("-", " --")}？`)) return;
+      startJob("/api/project-command", { path: b.dataset.path, command: b.dataset.cmd, confirm: writes }, "p-msg");
+    };
   });
   $("p-table").querySelectorAll("[data-reveal]").forEach((b) => { b.onclick = () => api("POST", "/api/reveal", { path: b.dataset.reveal }); });
 }
@@ -481,14 +486,14 @@ async function init() {
     name: $("c-name").value.trim(), parent: $("c-parent").value.trim(), data_dir: $("c-data").value.trim(),
     stack: $("c-stack").value, addons: checked("c-addons"), skills: checked("c-skills"), description: $("c-desc").value.trim(),
     timezone: $("c-tz-field").hidden ? "" : $("c-tz").value.trim(), license: $("c-mit").checked ? "MIT" : "none",
-    doctor: $("c-doctor").checked, setup: $("c-setup").checked, check: $("c-check").checked,
+    doctor: $("c-doctor").checked, setup: $("c-setup").checked, check: $("c-check").checked, confirm: true,
   }, "c-msg", (job) => {
     if (job.state === "done") say("job-msg", "✅ 專案已建立。用 Claude Code / Antigravity / Cursor 打開資料夾，對 Agent 說「開工」。");
   });
   $("m-go").onclick = () => startJob("/api/migrate", {
     source: $("m-source").value.trim(), name: $("m-name").value.trim() || $("m-source").value.trim().split("/").pop(),
     parent: $("m-parent").value.trim(), data_dir: $("m-data").value.trim(),
-    mode: document.querySelector("input[name=m-mode]:checked").value, stack: $("m-stack").value,
+    mode: document.querySelector("input[name=m-mode]:checked").value, stack: $("m-stack").value, confirm: true,
   }, "m-msg", (job) => {
     if (job.state === "done") say("job-msg", "✅ 已建立新專案。依 docs/migration/MIGRATION.md §4.5 搬資料，再對 Agent 說「繼續遷移」。");
   });
@@ -509,7 +514,7 @@ async function init() {
   $("u-preview").onclick = () => startJob("/api/update/preview", { root: $("u-root").value }, "u-msg", (job) => drawUpdate(job.result));
   $("u-apply").onclick = () => {
     if (!confirm("要更新表格中「可更新」的專案嗎？（不會推送、不會覆蓋專案改過的檔案）")) return;
-    startJob("/api/update/apply", { root: $("u-root").value, commit: $("u-commit").checked }, "u-msg", (job) => drawUpdate(job.result));
+    startJob("/api/update/apply", { root: $("u-root").value, commit: $("u-commit").checked, confirm: true }, "u-msg", (job) => drawUpdate(job.result));
   };
   poll();
 }

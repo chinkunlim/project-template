@@ -1,10 +1,11 @@
-# 母版網頁 JSON API（`tools/web_ui.py`）
+# 母版網頁 JSON API 與 MCP（`tools/web_ui.py`）
 
 網頁、Open WebUI 工具（`tools/openwebui/project_template_tool.py`）與其他程式共用同一組 API。
 
-- 位址：`http://127.0.0.1:8766`（`--port` 可改）；只綁 127.0.0.1。
+- 位址：`http://127.0.0.1:8766`（`--port` 可改）；只綁 127.0.0.1。互動文件 `/docs`，規格 `/openapi.json`（Open WebUI 可直接加成 OpenAPI 工具伺服器），MCP 在 `/mcp`；stdio MCP：`python3 tools/template_mcp.py`。
+- 會修改檔案的端點（create、migrate、update/apply、project-command 的 doctor-fix / setup）需要 `"confirm": true`，否則回 428。
 - Host 必須是 `127.0.0.1` / `localhost`（防 DNS rebinding）；Open WebUI 在 Docker 時啟動加 `--allow-host host.docker.internal`。
-- POST 若帶其他網站的 `Origin` 一律 403（防惡意網頁 CSRF）；伺服器端程式（例如 Open WebUI 工具）不帶 Origin，可以呼叫。
+- POST 若帶其他網站的 `Origin` 一律 403（防惡意網頁 CSRF）；Open WebUI（`http://127.0.0.1:8080`，可用 `--allow-origin` 改）允許並開放 CORS；伺服器端程式不帶 Origin，可以呼叫。
 - 一次只執行一個工作；工作執行的是一般指令（`init_project.py`、`migrate_project.py`、`agentctl …`、`update_all.py`），不會推送、不會刪檔。
 - 執行指令時會移除環境變數 `DATA_DIR`，讓每個專案都用自己 `.env` 的設定。
 - `root`、`parent` 省略時 = 母版所在的資料夾。
@@ -32,4 +33,4 @@
 | `/api/pick-folder` | `prompt`、`start` | 開啟 macOS 資料夾選擇視窗，回傳 `path`（取消時為空） |
 | `/api/reveal` | `path` | 在 Finder 打開資料夾 |
 
-錯誤：400（欄位錯誤，`detail` 說明原因）、403（不是本機請求）、409（已有工作在執行）。
+錯誤：400（欄位錯誤，`detail` 說明原因）、403（不是本機請求）、409（已有工作在執行）、428（需要 confirm）。

@@ -149,7 +149,8 @@ def is_open(item: Suggestion) -> bool:
     Returns:
         True unless its status is adopted or rejected.
     """
-    return item.status.strip().lower() not in CLOSED_STATUSES
+    status = item.status.strip().lower()
+    return not any(status.startswith(closed) for closed in CLOSED_STATUSES)  # "已採用（說明）" counts as adopted
 
 
 def render_report(items: list[Suggestion], scanned: int, show_all: bool) -> str:

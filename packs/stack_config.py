@@ -334,7 +334,7 @@ def build_gitignore(languages: list[str]) -> str:
         "# === OS & Editor Files ===",
         ".DS_Store", "Thumbs.db", ".idea/", "*.swp", "*.swo",
         "# Shared VS Code settings are committed; personal ones are not",
-        ".vscode/*", "!.vscode/settings.json", "!.vscode/launch.json", "!.vscode/extensions.json",
+        ".vscode/*", "!.vscode/settings.json", "!.vscode/launch.json", "!.vscode/extensions.json", "!.vscode/mcp.json",
         "",
         "# === Python (project-local .venv managed by uv; commit uv.lock and .python-version) ===",
         "__pycache__/", "*.py[cod]", ".venv/", ".pytest_cache/", ".ruff_cache/", ".mypy_cache/",
@@ -390,7 +390,11 @@ def build_env_example(project_name: str, languages: list[str], data_dir: str = "
     if "ollama" in languages:
         lines += ["OLLAMA_TIMEOUT_SECONDS=120"]
     if "api" in languages:
-        lines += ["", "# HTTP server (FastAPI) — keep 127.0.0.1", "HTTP_HOST=127.0.0.1", "HTTP_PORT=8000"]
+        lines += ["", "# HTTP server (FastAPI) — keep 127.0.0.1", "HTTP_HOST=127.0.0.1", "HTTP_PORT=8000",
+                  "# Other AI tools: Open WebUI in Docker reaches this app as host.docker.internal (comma-separated)",
+                  "HTTP_ALLOWED_HOSTS=",
+                  "# Browser pages allowed to call the API / MCP (Open WebUI tool servers run in the browser)",
+                  "HTTP_ALLOWED_ORIGINS=http://127.0.0.1:8080"]
     if "db" in languages:
         lines += ["", "# Database: empty = SQLite at <DATA_DIR>/db/app.db; PostgreSQL: postgresql+psycopg://user@127.0.0.1:5432/dbname", "DATABASE_URL="]
     if "gas" in languages:

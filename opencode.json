@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "project-template": {
+        "type": "local",
+        "command": [
+          "python3",
+          "tools/template_mcp.py"
+        ]
+      }
+    }
+  }
+}

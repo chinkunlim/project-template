@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "project-template": {
+      "command": "python3",
+      "args": [
+        "tools/template_mcp.py"
+      ]
+    }
+  }
+}

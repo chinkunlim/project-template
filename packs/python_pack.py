@@ -59,8 +59,16 @@ def resolve_data_dir(raw: str) -> Path:
     return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
 
+# Keys whose project `.env` value beats an inherited environment variable. `DATA_DIR` is a common
+# name (e.g. Open WebUI's `export DATA_DIR=...` in ~/.zshrc) and must never point a project elsewhere.
+PROJECT_FILE_WINS = ("DATA_DIR",)
+
+
 def load_dotenv_file(path: Path) -> None:
-    """Load `KEY=value` lines from a `.env` file without overriding variables that are already set.
+    """Load `KEY=value` lines from a `.env` file.
+
+    Variables that are already set win (so `LOG_LEVEL=DEBUG uv run ...` works), except the keys in
+    `PROJECT_FILE_WINS`, where the project's own `.env` always wins.
 
     Args:
         path: The `.env` file (missing files are ignored).
@@ -71,7 +79,11 @@ def load_dotenv_file(path: Path) -> None:
         line = raw.strip()
         if line and not line.startswith("#") and "=" in line:
             key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip().strip("\\"'"))
+            key, value = key.strip(), value.strip().strip("\\"'")
+            if key in PROJECT_FILE_WINS and value:
+                os.environ[key] = value
+            else:
+                os.environ.setdefault(key, value)
 
 
 @dataclass(frozen=True)
@@ -138,6 +150,18 @@ class AppConfig:
             `<data_dir>/logs`.
         """
         return self.data_dir / "logs"
+
+
+def _csv(value: str) -> tuple[str, ...]:
+    """Split a comma-separated setting.
+
+    Args:
+        value: Raw text such as `a, b`.
+
+    Returns:
+        The non-empty, stripped items.
+    """
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 def _flag(value: str) -> bool:
@@ -398,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = load_config()
     setup_logging(config.log_level, config.logs_dir if config.log_to_file else None)
-    logger.info("cli start args=%s env=%s", vars(args), config.app_env)
+    logger.info("cli start args=%s env=%s data_dir=%s", vars(args), config.app_env, config.data_dir)
     result = create_greeting(GreetingRequest(user_name=args.name), config)
     logger.info("cli done env=%s", result.environment)
     print(result.message)  # the CLI's real output (stdout); logs go to stderr / files
@@ -468,9 +492,14 @@ LAYER_DOCS = {
 
 EXTRA_SETTINGS = {
     "api": (
-        "\n        http_host: Address the HTTP server binds to (127.0.0.1 only; never 0.0.0.0).\n        http_port: HTTP server port.",
-        '\n    http_host: str = "127.0.0.1"\n    http_port: int = 8000',
-        '\n        http_host=os.environ.get("HTTP_HOST", "127.0.0.1").strip(),\n        http_port=int(os.environ.get("HTTP_PORT", "8000")),',
+        "\n        http_host: Address the HTTP server binds to (127.0.0.1 only; never 0.0.0.0).\n        http_port: HTTP server port."
+        "\n        http_allowed_hosts: Extra accepted Host names, e.g. host.docker.internal (Docker)."
+        "\n        http_allowed_origins: Web pages that may call the API (Open WebUI: http://127.0.0.1:8080).",
+        '\n    http_host: str = "127.0.0.1"\n    http_port: int = 8000'
+        '\n    http_allowed_hosts: tuple[str, ...] = ()\n    http_allowed_origins: tuple[str, ...] = ("http://127.0.0.1:8080",)',
+        '\n        http_host=os.environ.get("HTTP_HOST", "127.0.0.1").strip(),\n        http_port=int(os.environ.get("HTTP_PORT", "8000")),'
+        '\n        http_allowed_hosts=_csv(os.environ.get("HTTP_ALLOWED_HOSTS", "")),'
+        '\n        http_allowed_origins=_csv(os.environ.get("HTTP_ALLOWED_ORIGINS", "http://127.0.0.1:8080")),',
     ),
     "ollama": (
         "\n        ollama_model: Local model name, e.g. `qwen2.5`.\n        ollama_timeout_seconds: Timeout for one model call.",
@@ -531,7 +560,8 @@ def build_pyproject(project_name: str, description: str, pkg: str, addons: list[
     dist = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"
     deps = (API_DEPENDENCIES if "api" in addons else []) + (DB_DEPENDENCIES if "db" in addons else [])
     dev = ["ruff>=0.6.0", "mypy>=1.11"] + (API_DEV_DEPENDENCIES if "api" in addons else [])
-    server = f'\n{dist}-server = "{pkg}.entrypoints.http.server:main"' if "api" in addons else ""
+    server = (f'\n{dist}-server = "{pkg}.entrypoints.http.server:main"'
+              f'\n{dist}-mcp = "{pkg}.entrypoints.mcp_server:main"') if "api" in addons else ""
     return f'''[project]
 name = {json.dumps(dist)}
 version = "0.1.0"
