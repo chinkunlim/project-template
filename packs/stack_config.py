@@ -87,8 +87,25 @@ def resolve_languages(stack: str, addons: list[str] | None = None) -> list[str]:
     return [base, *extra]
 
 
+# Default data folder, RELATIVE to the project folder: projects/<name> sits next to
+# projects-data/<name>, so moving the whole folder (projects + projects-data) needs no edit.
+DATA_DIR_TEMPLATE = "../../projects-data/{slug}"
+
+
+def default_data_dir(project_name: str) -> str:
+    """Default `DATA_DIR` for a project (relative to the project folder).
+
+    Args:
+        project_name: Project name.
+
+    Returns:
+        Text such as `../../projects-data/my-app`.
+    """
+    return DATA_DIR_TEMPLATE.format(slug=data_slug(project_name))
+
+
 def data_slug(project_name: str) -> str:
-    """Folder name used under `~/project-data/` for a project.
+    """Folder name used under `projects-data/` for a project.
 
     Args:
         project_name: Project name.
@@ -323,8 +340,11 @@ def build_env_example(project_name: str, languages: list[str]) -> str:
         "LOG_TO_FILE=true",
         "API_TIMEOUT_SECONDS=15",
         "",
-        "# Data folder OUTSIDE the project (input/ output/ needs_review/ state/ db/ logs/); may be an external drive",
-        f"DATA_DIR=~/project-data/{data_slug(project_name)}",
+        "# Data folder OUTSIDE the project (input/ output/ needs_review/ state/ db/ logs/).",
+        "# A relative path is read from THIS project folder (not from where you run a command):",
+        "# projects/<name> -> projects-data/<name>, so moving both folders together needs no change.",
+        "# An absolute path also works, e.g. an external drive: /Volumes/<drive>/projects-data/<name>",
+        f"DATA_DIR={default_data_dir(project_name)}",
     ]
     if "python" in languages:
         lines += ["", "# Local services: always 127.0.0.1 (not localhost / 0.0.0.0)", "OLLAMA_BASE_URL=http://127.0.0.1:11434", "OLLAMA_MODEL=qwen2.5"]

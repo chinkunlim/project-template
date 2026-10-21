@@ -311,7 +311,7 @@ class ScaffoldTest(unittest.TestCase):
         env = (target / ".env.example").read_text(encoding="utf-8")
         self.assertIn("HTTP_HOST=127.0.0.1", env)
         self.assertIn("DATABASE_URL=", env)
-        self.assertIn("DATA_DIR=~/project-data/apidb", env)
+        self.assertIn("DATA_DIR=../../projects-data/apidb", env)
         self.assertIn("/data/", (target / ".gitignore").read_text(encoding="utf-8"))
         self.assertIn("<data_dir>/db/app.db", (pkg / "config" / "settings.py").read_text(encoding="utf-8"))
         settings = (pkg / "config" / "settings.py").read_text(encoding="utf-8")
@@ -404,6 +404,22 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("### Added", unreleased)
         self.assertIn("by `@claude-code`", unreleased)
         self.assertEqual(run(self.root, "git", "status", "--porcelain").stdout.strip(), "")
+
+    def test_data_dir_is_relative_to_the_project(self) -> None:
+        """The default DATA_DIR is ../../projects-data/<name>, read from the project folder (not the cwd), and follows a move."""
+        self.assertIn("DATA_DIR=../../projects-data/collab", (self.root / ".env.example").read_text(encoding="utf-8"))
+        code = "from collab.config.settings import load_config; print(load_config().data_dir)"
+        elsewhere = Path(self.tmp.name)
+        env = {"PYTHONPATH": str(self.root / "src"), "DATA_DIR": ""}
+        cmd = [sys.executable, "-c", "import os; os.environ.pop('DATA_DIR'); " + code]
+        out = subprocess.run(cmd, cwd=elsewhere, capture_output=True, text=True, env={**os.environ, **env})
+        self.assertEqual(Path(out.stdout.strip()), (self.root.parent.parent / "projects-data" / "collab").resolve(), out.stderr)
+        rel = run(elsewhere, sys.executable, "-c", code, env={**env, "DATA_DIR": "../data-here"})
+        self.assertEqual(Path(rel.stdout.strip()), (self.root.parent / "data-here").resolve(), "relative to the project, not the cwd")
+        (self.root / ".env").write_text("DATA_DIR=../../projects-data/collab\n", encoding="utf-8")
+        report = subprocess.run([sys.executable, ".agents/bin/doctor.py"], cwd=self.root, capture_output=True, text=True,
+                                env={k: v for k, v in os.environ.items() if k != "DATA_DIR"})
+        self.assertIn(str((self.root.parent.parent / "projects-data" / "collab").resolve()), report.stdout)
 
     def test_moving_the_project_folder(self) -> None:
         """Nothing tracked depends on the folder path: a moved / renamed project keeps a clean tree and passes check."""
@@ -676,7 +692,7 @@ class MigrationTest(unittest.TestCase):
         self.assertNotIn("catalog.pdf", run(self.new, "git", "ls-files").stdout)
         self.assertTrue((self.old / "data" / "input" / "catalog.pdf").exists(), "old project keeps its data")
         self.assertIn("rsync -a", plan)
-        self.assertIn("~/project-data/shop-v2/input/", plan)
+        self.assertIn("../../projects-data/shop-v2/input/", plan)
         self.assertIn("遷移批次", run(self.new, ".agents/bin/agent_task.py", "list").stdout)
         self.assertEqual(run(self.new, "scripts/agentctl.py", "check").returncode, 0, "legacy/ does not break the checks")
 

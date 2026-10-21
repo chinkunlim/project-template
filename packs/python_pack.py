@@ -30,9 +30,10 @@ PY_SETTINGS = '''"""Configuration layer: the ONLY layer allowed to read environm
 Loads settings once at startup into an immutable `AppConfig` so every other layer
 receives plain values instead of touching `os.environ`.
 
-Data lives OUTSIDE the project folder: `DATA_DIR` (default `~/project-data/{dist}`) holds
+Data lives OUTSIDE the project folder: `DATA_DIR` (default `../../projects-data/{dist}`) holds
 input/, output/, needs_review/, state/, db/ and logs/. The project folder only holds code,
-docs and small test fixtures.
+docs and small test fixtures. A relative `DATA_DIR` is resolved from the project folder (never
+from the current working directory), so the project and its data can be moved together.
 """
 
 from __future__ import annotations
@@ -42,7 +43,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATA_DIR = "~/project-data/{dist}"
+DEFAULT_DATA_DIR = "../../projects-data/{dist}"
+
+
+def resolve_data_dir(raw: str) -> Path:
+    """Turn a `DATA_DIR` value into an absolute path.
+
+    Args:
+        raw: Value from `.env`; relative paths are relative to the project folder, `~` is expanded.
+
+    Returns:
+        The absolute data folder.
+    """
+    path = Path(raw.strip()).expanduser()
+    return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
 
 def load_dotenv_file(path: Path) -> None:
@@ -78,7 +92,7 @@ class AppConfig:
     log_to_file: bool = True
     timeout_seconds: int = 15
     ollama_base_url: str = "http://127.0.0.1:11434"
-    data_dir: Path = Path(DEFAULT_DATA_DIR).expanduser(){extra_fields}
+    data_dir: Path = resolve_data_dir(DEFAULT_DATA_DIR){extra_fields}
 
     @property
     def input_dir(self) -> Path:
@@ -148,7 +162,7 @@ def load_config() -> AppConfig:
         ValueError: When a numeric setting is not an integer.
     """
     load_dotenv_file(PROJECT_ROOT / ".env")
-    data_dir = Path(os.environ.get("DATA_DIR", DEFAULT_DATA_DIR).strip()).expanduser()
+    data_dir = resolve_data_dir(os.environ.get("DATA_DIR", DEFAULT_DATA_DIR))
     return AppConfig(
         app_env=os.environ.get("APP_ENV", "development").strip(),
         log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
@@ -477,7 +491,7 @@ def build_settings_module(addons: list[str], dist: str) -> str:
 
     Args:
         addons: Project add-ons (`api` adds HTTP host/port, `db` adds the database URL).
-        dist: Distribution name, used for the default data folder `~/project-data/<dist>`.
+        dist: Distribution name, used for the default data folder `../../projects-data/<dist>`.
 
     Returns:
         Python source text.

@@ -115,7 +115,7 @@ def data_moves(data_paths: list[str], old_root: str, data_dir: str) -> list[tupl
     Args:
         data_paths: Old-project paths classified as data.
         old_root: Old project folder (still holds the only copy of the data).
-        data_dir: New project's DATA_DIR (e.g. `~/project-data/app`).
+        data_dir: New project's DATA_DIR (e.g. `../../projects-data/app`, relative to the new project).
 
     Returns:
         `(description, shell command)` pairs, one per top-level data folder or loose file.
@@ -525,7 +525,7 @@ def render_migration_md(source: dict[str, str], entries: list[Entry], extras: di
     lines += ["## 4.5 資料搬到 DATA_DIR（資料不進新專案）", ""]
     if extras.get("data_moves"):
         lines += [
-            "舊專案的資料**沒有**搬進 `legacy/`，也不在新專案資料夾內；唯一的副本仍在舊專案（未被修改）。確認 `.env` 的 `DATA_DIR` 後，依序複製：",
+            "舊專案的資料**沒有**搬進 `legacy/`，也不在新專案資料夾內；唯一的副本仍在舊專案（未被修改）。確認 `.env` 的 `DATA_DIR` 後，**在新專案資料夾內**依序執行（目標是相對於新專案的路徑）：",
             "",
         ]
         for desc, cmd in extras["data_moves"]:

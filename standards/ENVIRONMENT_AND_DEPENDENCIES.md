@@ -143,7 +143,8 @@ brew bundle --file Brewfile
 
 ## 7. 資料資料夾（DATA_DIR）
 
-- 每個專案在 `.env` 設定 `DATA_DIR`（預設 `~/project-data/<專案>`；大型資料可以放外接硬碟，例如 `/Volumes/<硬碟>/project-data/<專案>`）。
+- 每個專案在 `.env` 設定 `DATA_DIR`。預設是**相對路徑** `../../projects-data/<專案>`（從專案資料夾算起：`projects/<專案>` 旁邊的 `projects-data/<專案>`），整個資料夾一起搬移時不用改設定。大型資料可以放外接硬碟，這時寫絕對路徑，例如 `/Volumes/<硬碟>/projects-data/<專案>`。
+- **不要把路徑寫死在程式裡**：程式只透過 config 拿 `DATA_DIR`；相對路徑一律從專案資料夾解析，不受執行指令時所在的資料夾影響。
 - 建立標準子資料夾並檢查設定（`DATA_DIR` 在專案資料夾內時會警告）：
 
 ```bash

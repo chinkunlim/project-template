@@ -95,7 +95,7 @@ def create_db_engine(database_url: str) -> Engine:
     connection so tests and the API see the same data.
 
     Args:
-        database_url: e.g. `sqlite:////Users/me/project-data/app/db/app.db` or `postgresql+psycopg://user@127.0.0.1/db`.
+        database_url: e.g. `sqlite:////Volumes/drive/projects-data/app/db/app.db` or `postgresql+psycopg://user@127.0.0.1/db`.
 
     Returns:
         The engine.

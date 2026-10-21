@@ -76,7 +76,7 @@ flowchart TD
 
 ## 5. 資料與程式分離
 
-1. **資料不放在專案資料夾內**：輸入、輸出、隔離區、進度狀態、SQLite、log 都放在 `.env` 的 `DATA_DIR`（預設 `~/project-data/<專案>`，可以是外接硬碟）。標準結構：`input/`、`output/`、`needs_review/`、`state/`、`db/`、`logs/`。
+1. **資料不放在專案資料夾內**：輸入、輸出、隔離區、進度狀態、SQLite、log 都放在 `.env` 的 `DATA_DIR`（預設相對路徑 `../../projects-data/<專案>`，從專案資料夾算起；外接硬碟時寫絕對路徑）。標準結構：`input/`、`output/`、`needs_review/`、`state/`、`db/`、`logs/`。
 2. **程式只透過 config 取得路徑**：用 `AppConfig.data_dir`、`input_dir`、`output_dir`、`needs_review_dir`、`state_dir`、`logs_dir`，其他層收參數；不要寫死 `data/...` 或絕對路徑。
 3. **專案內只放程式、文件和小型測試樣本**（`tests/fixtures/`、`evals/cases/`，每個檔案 ≤ 1 MB）。pre-commit 會擋下 PDF、EPUB、壓縮檔、影音、資料庫與超過 10 MB 的檔案（文件型專案可設 `[quality] block_data_files = false`）。
 4. **批次處理不中斷**：單一項目失敗或信心度不足時，寫入 `needs_review/`（附原因），繼續處理下一個。

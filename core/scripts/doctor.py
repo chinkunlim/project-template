@@ -146,10 +146,11 @@ def check_data_dir(fix: bool) -> list[tuple[str, str]]:
     raw = env_value("DATA_DIR")
     if not raw:
         return []
-    data_dir = Path(raw).expanduser().resolve()
+    data_dir = Path(raw).expanduser()
+    data_dir = (data_dir if data_dir.is_absolute() else ROOT / data_dir).resolve()  # relative = from the project folder
     results = []
     if data_dir == ROOT or ROOT in data_dir.parents:
-        results.append(("WARN", f"DATA_DIR 在專案資料夾內（{data_dir}）：資料應放在專案外，例如 ~/project-data/{ROOT.name}"))
+        results.append(("WARN", f"DATA_DIR 在專案資料夾內（{data_dir}）：資料應放在專案外，例如 ../../projects-data/{ROOT.name}"))
     if not data_dir.exists() and fix:
         for sub in DATA_SUBDIRS:
             (data_dir / sub).mkdir(parents=True, exist_ok=True)

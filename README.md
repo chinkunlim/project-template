@@ -144,9 +144,9 @@ my_app/
    - Python 一律用 uv：`.python-version`（3.11）+ uv 自己下載的直譯器 + `uv.lock` + 專案內 `.venv/`；不用全域 pip。
    - Node 版本寫在 `.nvmrc`、pnpm 版本寫在 `packageManager`（corepack）；工具（clasp 等）是 devDependencies，裝在專案內 `node_modules/`，用 `pnpm exec` 執行；不用 `npm -g`。
    - 型別檢查用 mypy（strict），和 ruff 一樣裝在專案 `.venv`。
-   - **路徑不寫死**：框架用相對位置找檔案，專案和母版資料夾都可以搬移或改名（`.agents/project.toml` 的專案名稱才是名字）。專案搬家後執行一次 `agentctl doctor --fix`：`.venv` 內的工具會記住舊位置，doctor 會依 `uv.lock` 重建。
+   - **路徑不寫死**：框架用相對位置找檔案，專案和母版資料夾都可以搬移或改名（`.agents/project.toml` 的專案名稱才是名字）；資料資料夾預設也是相對路徑，`projects/` 和 `projects-data/` 一起搬就不用改設定。專案搬家後執行一次 `agentctl doctor --fix`：`.venv` 內的工具會記住舊位置，doctor 會依 `uv.lock` 重建。
    - 主機只需要 git、uv、nvm（Node + corepack pnpm）；手機 App 另需 Xcode 與 Android Studio（見第 0 節）。hook 納入版本控管；`.claude/skills` 由 `agentctl doctor --fix` 重建；`agentctl setup --install` 一鍵安裝。
-5. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（預設 `~/project-data/<專案>`，可放外接硬碟）；pre-commit 擋下 PDF、壓縮檔、資料庫與超過 10 MB 的檔案。
+5. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（預設是相對路徑 `../../projects-data/<專案>`：`projects/` 旁邊的 `projects-data/`；外接硬碟時寫絕對路徑）；pre-commit 擋下 PDF、壓縮檔、資料庫與超過 10 MB 的檔案。
 6. **Git 安全**：commit 訊息一律英文；pre-push hook 擋下未經同意的 push（`ALLOW_PUSH=1` 才放行）；`agentctl pause` 中途離開、`agentctl finish` 專案完成驗收。
 7. **AGENTS.md**：「使用者說什麼 → 執行什麼」對照表；核心規則包括出示執行證據、與 ADR 衝突要先問、錯誤與決策即時記錄、通用規則回寫模板（`docs/TEMPLATE_FEEDBACK.md`）；專案特有規則寫 `docs/standards/PROJECT_RULES.md`（模板更新不會覆蓋）。
 8. **可擴充、可升級**：Skills 分 core / stack / optional（`skills/catalog.json`）；`agentctl update --from <母版>` 依 `framework.lock` 只更新未被專案修改的檔案，衝突檔另存 `*.template`。
@@ -176,10 +176,10 @@ python3 tools/update_all.py
 python3 tools/update_all.py --apply
 ```
 
-   只更新單一專案時，在該專案內執行：
+   只更新單一專案時，在該專案內執行（母版和專案在同一個資料夾時，用相對路徑即可）：
 
 ```bash
-python3 scripts/agentctl.py update --from "$HOME/Desktop/projects/01 project_template"
+python3 scripts/agentctl.py update --from "../01 project_template"
 ```
 
 ---

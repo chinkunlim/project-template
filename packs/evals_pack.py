@@ -100,7 +100,7 @@ RUN_PY = '''"""Score output files against the rules in `checks.py` and fail belo
 
 Usage:
     uv run python evals/run_evals.py                       # evals/cases/**/*.md
-    uv run python evals/run_evals.py --outputs ~/project-data/app/output --min-score 0.9
+    uv run python evals/run_evals.py --outputs ../../projects-data/app/output --min-score 0.9
 """
 
 from __future__ import annotations

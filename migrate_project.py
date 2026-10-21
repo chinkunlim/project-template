@@ -47,6 +47,7 @@ for _path in (TEMPLATE_ROOT, TEMPLATE_ROOT / "lib"):
 from init_project import scaffold_project  # noqa: E402
 from packs.common import slugify_package_name, write_file  # noqa: E402
 from packs.language_packs import ADDON_CHOICES, STACK_CHOICES  # noqa: E402
+from packs.stack_config import default_data_dir  # noqa: E402
 from packs.migration_plan import (  # noqa: E402
     BATCH_TITLES,
     PlanContext,
@@ -294,7 +295,7 @@ def write_plan(target: Path, source: dict[str, str]) -> int:
         grouped.append(("flask", []))
     batches = create_batch_tasks(target, grouped)
     legacy = target / "legacy"
-    data_dir = f"~/project-data/{re.sub(r'[^a-z0-9-]+', '-', target.name.lower()).strip('-') or 'app'}"
+    data_dir = default_data_dir(target.name)  # relative to the new project folder
     risks = find_risks(target, entries)
     if source.get("data_paths") and source["history"] == "kept":
         risks.append(f"🟡 舊的 git 歷史仍含 {len(source['data_paths'])} 個資料檔（repo 體積大、可能有著作權資料）：若要推送到 GitHub，先評估用 `git filter-repo` 清除歷史中的資料檔。")
