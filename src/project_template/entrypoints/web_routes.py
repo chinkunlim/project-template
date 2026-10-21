@@ -85,6 +85,19 @@ class UpdateIn(FolderIn):
     confirm: bool = Field(default=False, description="Must be true: the user agreed to the preview")
 
 
+class RegisterIn(BaseModel):
+    """An existing project folder to add to the overview."""
+
+    path: str = Field(description="Absolute folder of a project made with the template (.agents/framework.lock + scripts/agentctl.py)")
+    confirm: bool = Field(default=False, description="Must be true: the user agreed to add it to the registry")
+
+
+class FetchIn(FolderIn):
+    """Refresh the remote state of one or every tracked project."""
+
+    path: str = Field(default="", description="Absolute project folder; empty = every tracked project with a git remote")
+
+
 class PickIn(BaseModel):
     """Native folder dialog."""
 
@@ -118,20 +131,21 @@ def need_confirm(confirm: bool, what: str) -> None:
         raise PermissionError(f"{what} 會修改檔案：先讓使用者確認，再用 confirm=true 呼叫")
 
 
-def started(title: str, steps: list[Any], after: ts.AfterJob | None = None) -> dict[str, Any]:
+def started(title: str, steps: list[Any], after: ts.AfterJob | None = None, keep_going: bool = False) -> dict[str, Any]:
     """Start a background job.
 
     Args:
         title: Job title.
         steps: `(argv, cwd)` pairs.
         after: Optional result callback.
+        keep_going: Run every step even when one fails.
 
     Returns:
         Job id, title and the commands it runs.
     """
     import shlex
 
-    job = ts.RUNNER.start(title, steps, after=after)
+    job = ts.RUNNER.start(title, steps, after=after, keep_going=keep_going)
     return {"id": job.id, "title": job.title, "commands": [shlex.join(a) for a, _ in steps]}
 
 
@@ -202,7 +216,7 @@ def describe_options() -> dict[str, Any]:
 
 @router.get("/api/projects")
 def list_projects(root: str = "") -> list[dict[str, Any]]:
-    """List projects created from the template (version, uncommitted files, last commit).
+    """List the tracked projects: below the folder plus registered ones (version, uncommitted files, last commit).
 
     Args:
         root: Absolute folder to scan; empty = the folder that contains the template.
@@ -360,6 +374,36 @@ def push_project(body: CommandIn) -> dict[str, Any]:
     """
     need_confirm(body.confirm, "推送到 GitHub")
     return started(*ts.push_steps(body.model_dump()))
+
+
+@router.post("/api/registry/add")
+def register_project(body: RegisterIn) -> dict[str, Any]:
+    """Add an existing project folder (made with the template) to the overview. Needs confirm=true.
+
+    Args:
+        body: Project folder and confirmation.
+
+    Returns:
+        Path, name, whether it was registered already, and whether it was added.
+    """
+    ts.register_existing(body.path)  # refuse a folder that is not a project before asking for confirm
+    need_confirm(body.confirm, "加入既有專案")
+    return ts.add_existing(body.path)
+
+
+@router.post("/api/fetch", status_code=202)
+def refresh_remote_status(body: FetchIn) -> dict[str, Any]:
+    """`git fetch` one or every tracked project so the unpushed / behind counts are current (no files change).
+
+    Args:
+        body: Optional project folder; otherwise the folder to scan (registered projects are added).
+
+    Returns:
+        The started job and its commands; the result (in /api/job) is the refreshed overview.
+    """
+    root = ts.resolve_root(body.root)
+    title, steps = ts.fetch_steps(body.model_dump(), root)
+    return started(title, steps, after=lambda job: setattr(job, "result", ts.overview(root)), keep_going=True)
 
 
 @router.post("/api/registry/forget", include_in_schema=False)

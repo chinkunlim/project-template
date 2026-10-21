@@ -38,6 +38,8 @@ GIT_ENV = {
 }
 os.environ.update(GIT_ENV)
 os.environ["TEMPLATE_NO_REGISTRY"] = "1"  # tests never add their temporary projects to the user's registry
+_REGISTRY_HOME = tempfile.TemporaryDirectory(prefix="template-test-registry-")
+os.environ["TEMPLATE_REGISTRY_FILE"] = str(Path(_REGISTRY_HOME.name) / "projects.json")  # and never read it either
 os.environ["TEMPLATE_SKIP_UV_LOCK"] = "1"  # unit tests stay offline; see UvIntegrationTest for the real uv flow
 _DATA_HOME = tempfile.TemporaryDirectory(prefix="template-test-data-")
 os.environ["DATA_DIR"] = _DATA_HOME.name  # tests never write into the user's real ~/project-data
@@ -1220,7 +1222,8 @@ class OverviewTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            original, registry.REGISTRY = registry.REGISTRY, base / "registry.json"
+            original = os.environ["TEMPLATE_REGISTRY_FILE"]
+            os.environ["TEMPLATE_REGISTRY_FILE"] = str(base / "registry.json")
             os.environ.pop("TEMPLATE_NO_REGISTRY", None)
             try:
                 scaffold_project(base / "folder" / "inside", "inside", stack="generic")
@@ -1238,8 +1241,79 @@ class OverviewTest(unittest.TestCase):
                 self.assertTrue(registry.forget(rows["gone"]["path"]))
                 self.assertNotIn("gone", {r["name"] for r in ts.overview(base / "folder")})
             finally:
-                registry.REGISTRY = original
+                os.environ["TEMPLATE_REGISTRY_FILE"] = original
                 os.environ["TEMPLATE_NO_REGISTRY"] = "1"
+
+
+class TrackedProjectsTest(unittest.TestCase):
+    """Registered projects outside the scanned folder take part in every action, not only the overview."""
+
+    def setUp(self) -> None:
+        """Use a temporary registry that records entries."""
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.saved = os.environ["TEMPLATE_REGISTRY_FILE"]
+        os.environ["TEMPLATE_REGISTRY_FILE"] = str(self.base / "registry.json")
+        os.environ.pop("TEMPLATE_NO_REGISTRY", None)
+
+    def tearDown(self) -> None:
+        """Restore the test registry settings."""
+        os.environ["TEMPLATE_REGISTRY_FILE"] = self.saved
+        os.environ["TEMPLATE_NO_REGISTRY"] = "1"
+        self.tmp.cleanup()
+
+    def test_registered_project_outside_the_folder_is_previewed_and_updated(self) -> None:
+        """A project added with add_existing() shows up in the list, feedback, preview and update_all --registered."""
+        from project_template.services import template_service as ts
+
+        base = self.base
+        tpl = base / "tpl"
+        shutil.copytree(TEMPLATE_ROOT, tpl, ignore=shutil.ignore_patterns(".git", ".skills-cache", "__pycache__", ".venv", ".local"))
+        run(tpl, "git", "init", "-q", "-b", "main")
+        run(tpl, "git", "add", "-A")
+        run(tpl, "git", "commit", "-qm", "template")
+        for target in (base / "projects" / "inside", base / "elsewhere" / "outside"):
+            res = run(tpl, "scripts/init_project.py", "--target", str(target), "--stack", "generic", env={"TEMPLATE_NO_REGISTRY": "1"})
+            self.assertEqual(res.returncode, 0, res.stderr)
+        outside = base / "elsewhere" / "outside"
+        self.assertNotIn("outside", {p["name"] for p in ts.list_projects(base / "projects")}, "not registered yet")
+        self.assertTrue(ts.add_existing(str(outside))["added"])
+
+        self.assertEqual({p["name"] for p in ts.list_projects(base / "projects")}, {"inside", "outside"})
+        self.assertEqual(ts.feedback(base / "projects", True)["scanned"], 2)
+        self.assertEqual({r["name"] for r in ts.update_preview(base / "projects")}, {"inside", "outside"})
+        self.assertIn("--registered", ts.update_apply_steps(base / "projects")[1][0][0])
+        self.assertEqual({r["source"] for r in ts.overview(base / "projects") if r["name"] == "outside"}, {"registry"})
+
+        doctor = tpl / ".agents" / "bin" / "doctor.py"
+        doctor.write_text(doctor.read_text(encoding="utf-8") + "\n# template improvement\n", encoding="utf-8")
+        run(tpl, "git", "commit", "-qam", "improve")
+        self.assertNotIn("`outside`", run(tpl, "scripts/update_all.py", str(base / "projects")).stdout, "folders only by default")
+        preview = run(tpl, "scripts/update_all.py", str(base / "projects"), "--registered")
+        self.assertIn("`outside`", preview.stdout, preview.stderr)
+        res = run(tpl, "scripts/update_all.py", str(base / "projects"), "--registered", "--apply", "--yes")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("chore(framework): update to v", run(outside, "git", "log", "-1", "--pretty=%s").stdout)
+        self.assertIn("# template improvement", (outside / ".agents" / "bin" / "doctor.py").read_text(encoding="utf-8"))
+
+    def test_registering_an_invalid_folder_is_refused(self) -> None:
+        """Only an existing template project can be added; anything else is refused and nothing is recorded."""
+        from project_template.services import template_service as ts
+
+        half = self.base / "half"
+        (half / ".agents").mkdir(parents=True)
+        (half / ".agents" / "framework.lock").write_text("{}", encoding="utf-8")  # no scripts/agentctl.py
+        (self.base / "plain").mkdir()
+        for raw in (str(self.base / "plain"), str(half), str(self.base / "missing"), "relative/path", str(TEMPLATE_ROOT)):
+            with self.assertRaises(ValueError, msg=raw):
+                ts.add_existing(raw)
+        self.assertFalse((self.base / "registry.json").exists(), "nothing was recorded")
+        scaffold_project(self.base / "ok", "ok", stack="generic", init_git_repo=False)
+        self.assertTrue(ts.add_existing(str(self.base / "ok"))["added"])
+        self.assertTrue(ts.register_existing(str(self.base / "ok"))["already"])
+        self.assertFalse(ts.add_existing(str(self.base / "ok"))["added"], "registered once")
+        with self.assertRaises(ValueError):
+            ts.fetch_steps({"path": str(self.base / "ok")}, self.base)  # no git remote: nothing to fetch
 
 
 @unittest.skipUnless(os.environ.get("TEMPLATE_UV_TESTS") and shutil.which("uv"), "set TEMPLATE_UV_TESTS=1 (needs uv + network)")

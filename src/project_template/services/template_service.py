@@ -1,9 +1,11 @@
 """Template actions shared by the web page, the JSON API and the MCP server (standard library only).
 
 Purpose:
-    One place for everything the template can do: create a project, migrate an old project, list
-    projects and run framework commands in them, collect template feedback, and preview / apply the
-    framework update. `entrypoints/web_ui.py` (FastAPI page + JSON API + `/mcp`) and
+    One place for everything the template can do: create a project, migrate an old project, add an
+    existing project to the registry, list projects and run framework commands in them, refresh their
+    remote state (`git fetch`), collect template feedback, and preview / apply the framework update.
+    Every action works on the same set of projects, `tracked()`: the scanned folder plus the registered
+    projects elsewhere. `entrypoints/web_ui.py` (FastAPI page + JSON API + `/mcp`) and
     `entrypoints/template_mcp.py` (MCP over stdio) only translate requests into these functions, so every entrypoint behaves the same.
 
     Actions run the existing command-line tools (`scripts/init_project.py`, `scripts/migrate_project.py`,
@@ -13,6 +15,7 @@ Purpose:
 """
 from __future__ import annotations
 
+import logging
 import re
 import shlex
 import subprocess
@@ -38,6 +41,7 @@ from project_template.packs.stack_config import (
 from project_template.services import feedback as collect_feedback
 from project_template.services import update_all
 
+logger = logging.getLogger(__name__)
 SCRIPTS = TEMPLATE_ROOT / "scripts"
 
 DEFAULT_PORT = 8766
@@ -63,11 +67,13 @@ class Job:
         log: Output lines (commands are echoed with `$`).
         result: Structured result for the page (e.g. the update preview table).
         returncode: Exit code of the last command.
+        keep_going: Run the remaining steps after a failure (the job still ends `failed`).
     """
 
     id: int
     title: str
     steps: list[tuple[list[str], Path]]
+    keep_going: bool = False
     state: str = "running"
     log: list[str] = field(default_factory=list)
     result: object = None
@@ -87,13 +93,15 @@ class JobRunner:
         self.current: Job | None = None
         self.counter = 0
 
-    def start(self, title: str, steps: list[tuple[list[str], Path]], after: AfterJob | None = None) -> Job:
+    def start(self, title: str, steps: list[tuple[list[str], Path]], after: AfterJob | None = None,
+              keep_going: bool = False) -> Job:
         """Start a job unless one is still running.
 
         Args:
             title: Short description.
             steps: `(argv, cwd)` pairs to run in order.
             after: Optional function called with the job when every step succeeded (fills `result`).
+            keep_going: Run every step even when one fails (e.g. `git fetch` in many projects).
 
         Returns:
             The new job.
@@ -105,7 +113,7 @@ class JobRunner:
             if self.current and self.current.state == "running":
                 raise RuntimeError(f"另一個工作還在執行：{self.current.title}")
             self.counter += 1
-            job = Job(self.counter, title, steps)
+            job = Job(self.counter, title, steps, keep_going)
             self.current = job
         threading.Thread(target=self._run, args=(job, after), daemon=True).start()
         return job
@@ -118,6 +126,7 @@ class JobRunner:
             after: Optional completion callback.
         """
         env = child_env()
+        failed = 0
         for argv, cwd in job.steps:
             job.log.append(f"$ (cd {shlex.quote(str(cwd))} && {shlex.join(argv)})")
             with subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
@@ -125,9 +134,14 @@ class JobRunner:
                     job.log.append(line.rstrip("\n"))
                 job.returncode = proc.wait()
             if job.returncode != 0:
-                job.state = "failed"
                 job.log.append(f"❌ 結束碼 {job.returncode}")
-                return
+                failed += 1
+                if not job.keep_going:
+                    job.state = "failed"
+                    return
+        if failed:
+            job.state = "failed"
+            return
         try:
             if after:
                 after(job)
@@ -287,8 +301,20 @@ def migrate_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path
     return f"遷移 {source.name} → {name}", steps
 
 
+def tracked(root: Path) -> list[Path]:
+    """Every project the actions work on: the ones below `root` plus the registered ones elsewhere.
+
+    Args:
+        root: Folder to scan (normally the folder that contains the template).
+
+    Returns:
+        Sorted project folders (`update_all.tracked_projects()`).
+    """
+    return update_all.tracked_projects([root], 3)
+
+
 def list_projects(root: Path) -> list[dict[str, Any]]:
-    """List projects created from the template below `root`.
+    """List the tracked projects (below `root` + registered).
 
     Args:
         root: Folder to scan.
@@ -297,7 +323,7 @@ def list_projects(root: Path) -> list[dict[str, Any]]:
         Project summaries (name, path, framework version, uncommitted files, last commit).
     """
     rows = []
-    for project in update_all.find_projects([root], 3):
+    for project in tracked(root):
         status = subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True, text=True, check=False)
         last = subprocess.run(["git", "log", "-1", "--format=%h %cs %s"], cwd=project, capture_output=True, text=True, check=False)
         rows.append({
@@ -308,16 +334,16 @@ def list_projects(root: Path) -> list[dict[str, Any]]:
 
 
 def feedback(root: Path, include_all: bool) -> dict[str, Any]:
-    """Collect template suggestions from every project.
+    """Collect template suggestions from every tracked project.
 
     Args:
-        root: Folder to scan.
+        root: Folder to scan (registered projects are added).
         include_all: Include adopted / rejected suggestions.
 
     Returns:
         `scanned` count and `items` (date, project, version, text, source, status, file).
     """
-    files = collect_feedback.find_feedback_files([root], 3)
+    files = collect_feedback.find_feedback_files([root], 3, registered=True)
     items = [s for f in files for s in collect_feedback.read_suggestions(f) if include_all or collect_feedback.is_open(s)]
     rows = [{"date": s.date, "project": s.project, "version": s.version, "text": s.text, "source": s.source,
              "status": s.status, "file": str(s.file)} for s in sorted(items, key=lambda s: (s.date, s.project))]
@@ -325,15 +351,15 @@ def feedback(root: Path, include_all: bool) -> dict[str, Any]:
 
 
 def update_preview(root: Path) -> list[dict[str, Any]]:
-    """Preview the framework update for every project (nothing changes).
+    """Preview the framework update for every tracked project (nothing changes).
 
     Args:
-        root: Folder to scan.
+        root: Folder to scan (registered projects are added).
 
     Returns:
         One row per project with versions, file counts and status.
     """
-    plans = [update_all.preview(p) for p in update_all.find_projects([root], 3)]
+    plans = [update_all.preview(p) for p in tracked(root)]
     update_all.classify(plans)
     return [{"name": p.path.name, "path": str(p.path), "current": p.current, "target": p.target,
              **{k: len(v) for k, v in p.files.items()}, "removed_files": p.files["removed"], "status": p.status} for p in plans]
@@ -391,16 +417,16 @@ def project_command_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[st
 
 
 def update_apply_steps(root: Path, commit: bool = True) -> tuple[str, list[tuple[list[str], Path]]]:
-    """Build the command that updates every updatable project.
+    """Build the command that updates every updatable tracked project.
 
     Args:
-        root: Folder that holds the projects.
+        root: Folder that holds the projects (`--registered` adds the registered ones elsewhere).
         commit: Commit each cleanly updated project locally.
 
     Returns:
         Tuple of job title and steps.
     """
-    argv = [PY, str(SCRIPTS / "update_all.py"), str(root), "--apply", "--yes"] + ([] if commit else ["--no-commit"])
+    argv = [PY, str(SCRIPTS / "update_all.py"), str(root), "--registered", "--apply", "--yes"] + ([] if commit else ["--no-commit"])
     return "更新所有專案的框架", [(argv, TEMPLATE_ROOT)]
 
 
@@ -494,7 +520,7 @@ def project_status(project: Path) -> dict[str, Any]:
 
 
 def overview(root: Path) -> list[dict[str, Any]]:
-    """Every project to track: found in `root` plus the ones recorded in the registry.
+    """Every tracked project: found in `root` plus the ones recorded in the registry.
 
     Args:
         root: Folder to scan (normally the folder that contains the template).
@@ -503,20 +529,79 @@ def overview(root: Path) -> list[dict[str, Any]]:
         One status per project; registry entries whose folder is gone are listed with `exists: False`.
     """
     registry = {str(Path(r["path"]).resolve()): r for r in project_registry.load()}
-    found = {str(p.resolve()): p for p in update_all.find_projects([root], 3)}
-    in_folder = set(found)
-    for key, row in registry.items():
-        if row["exists"] and key not in found and (Path(key) / ".agents" / "framework.lock").exists():
-            found[key] = Path(key)
+    base = root.expanduser().resolve()
     rows = []
-    for key, project in sorted(found.items(), key=lambda kv: kv[1].name.lower()):
+    for project in sorted(tracked(root), key=lambda p: p.name.lower()):
         status = project_status(project)
-        status["source"] = "folder" if key in in_folder else "registry"
-        status["how"] = registry.get(key, {}).get("how", "")
+        status["source"] = "folder" if project.is_relative_to(base) else "registry"
+        status["how"] = registry.get(str(project), {}).get("how", "")
         rows.append(status)
     rows += [{"name": r["name"], "path": r["path"], "exists": False, "how": r.get("how", ""), "source": "registry"}
-             for key, r in registry.items() if not r["exists"]]
+             for r in registry.values() if not r["exists"]]
     return rows
+
+
+def register_existing(raw: str) -> dict[str, Any]:
+    """Check that a folder can be added to the registry (an existing project made with the template).
+
+    Args:
+        raw: Absolute folder from the caller.
+
+    Returns:
+        `path`, `name` and `already` (True when it is registered already).
+
+    Raises:
+        ValueError: When the folder is missing, is the template, or lacks `.agents/framework.lock` / `scripts/agentctl.py`.
+    """
+    project = require_dir(raw, "既有專案")
+    if project == TEMPLATE_ROOT:
+        raise ValueError("這是母版本身，不是專案")
+    if not update_all.is_project(project):
+        raise ValueError(f"{project} 不是用母版建立的專案（需要 .agents/framework.lock 和 scripts/agentctl.py）；"
+                         "舊專案請用「遷移舊專案」")
+    already = any(Path(r["path"]).resolve() == project for r in project_registry.load())
+    return {"path": str(project), "name": project.name, "already": already}
+
+
+def add_existing(raw: str) -> dict[str, Any]:
+    """Add an existing project folder to the registry (the user confirmed it; the folder is not changed).
+
+    Args:
+        raw: Absolute project folder.
+
+    Returns:
+        `path`, `name`, `already` and `added`.
+
+    Raises:
+        ValueError: When the folder is not a template project (see `register_existing()`).
+    """
+    found = register_existing(raw)
+    if not found["already"]:
+        project_registry.register(Path(found["path"]), "existing")
+    logger.info(f"📌 登記既有專案 {found['path']}（{'已在清單' if found['already'] else '新加入'}）")
+    return {**found, "added": not found["already"]}
+
+
+def fetch_steps(body: dict[str, Any], root: Path) -> tuple[str, list[tuple[list[str], Path]]]:
+    """Build the `git fetch` commands that refresh the unpushed / behind counts (only remote-tracking refs change).
+
+    Args:
+        body: Optional `path` of one project; empty = every tracked project that has a remote.
+        root: Folder to scan when no path is given.
+
+    Returns:
+        Tuple of job title and steps (no password prompts: `GIT_TERMINAL_PROMPT=0`).
+
+    Raises:
+        ValueError: When the given project or every tracked project has no git remote.
+    """
+    projects = [require_dir(body["path"], "專案")] if body.get("path") else tracked(root)
+    with_remote = [p for p in projects if _git(p, "remote")]
+    if not with_remote:
+        raise ValueError("沒有設定 git 遠端的專案，不需要 fetch")
+    argv = ["env", "GIT_TERMINAL_PROMPT=0", "git", "fetch", "--all", "--quiet"]
+    title = f"git fetch {with_remote[0].name}" if body.get("path") else f"git fetch（{len(with_remote)} 個專案）"
+    return title, [(argv, p) for p in with_remote]
 
 
 def push_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path]]]:

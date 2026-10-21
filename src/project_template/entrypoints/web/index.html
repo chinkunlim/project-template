@@ -176,13 +176,18 @@
 
   <section class="panel" data-panel="projects">
     <h2>我建立的專案</h2>
-    <p class="hint">母版所在資料夾裡的專案，加上用母版建立或遷移過的專案（記錄在母版的 .local/projects.json，不進 git）。「未推送」以上次 git fetch 為準。</p>
+    <p class="hint">母版所在資料夾裡的專案，加上用母版建立、遷移或手動加入的專案（記錄在母版的 .local/projects.json，不進 git）。改進建議與框架更新也包含這些專案。「未推送 / 落後」以上次 git fetch 為準，按「git fetch」更新。</p>
     <div class="row"><input type="text" id="p-root"><button data-pick="p-root">選擇…</button><button class="primary" id="p-scan">重新整理</button></div>
     <div class="chips" id="p-summary" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>
     <div class="row" style="margin-bottom:8px">
       <button id="p-check-updates">檢查框架更新</button>
       <button id="p-update-all" hidden>一鍵更新全部</button>
       <button id="p-feedback">收集改進建議</button>
+      <button id="p-fetch">git fetch（更新未推送 / 落後）</button>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input type="text" id="p-add" placeholder="既有專案的資料夾（要有 .agents/framework.lock 和 scripts/agentctl.py）">
+      <button data-pick="p-add">選擇…</button><button id="p-add-go">加入既有專案</button>
     </div>
     <div class="table-wrap"><table id="p-table"></table></div>
     <div class="msg" id="p-msg"></div>
@@ -581,6 +586,18 @@ async function init() {
   $("p-update-all").onclick = () => {
     if (!confirm("更新所有「可更新」的專案？專案改過的檔案不會被覆蓋（另存 *.template），有未 commit 修改的專案會略過，不會推送。")) return;
     startJob("/api/update/apply", { root: $("p-root").value, commit: true, confirm: true }, "p-msg", async (job) => { await loadOverview(); rememberUpdates(job.result); });
+  };
+  $("p-fetch").onclick = () => startJob("/api/fetch", { root: $("p-root").value }, "p-msg", loadOverview);
+  $("p-add-go").onclick = async () => {
+    const path = $("p-add").value.trim();
+    if (!path) { say("p-msg", "先選擇既有專案的資料夾", true); return; }
+    if (!confirm(`把 ${path} 加入總覽？（只記錄在母版的 .local/projects.json，不會修改專案）`)) return;
+    try {
+      const res = await api("POST", "/api/registry/add", { path, confirm: true });
+      $("p-add").value = "";
+      await loadOverview();
+      say("p-msg", res.added ? `✅ 已加入 ${res.name}` : `${res.name} 已在清單中`);
+    } catch (err) { say("p-msg", err.message, true); }
   };
   $("p-feedback").onclick = () => { showTab("feedback"); $("f-root").value = $("p-root").value; $("f-scan").click(); };
   $("f-scan").onclick = async () => {

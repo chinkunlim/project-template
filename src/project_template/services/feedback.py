@@ -3,7 +3,8 @@
 Purpose:
     Each project records "every project should do this" ideas in its own
     `docs/TEMPLATE_FEEDBACK.md`. With many projects those ideas are scattered, so this
-    tool scans a projects folder (default: the folder that contains the template), reads every such file, and prints one Markdown list of
+    tool reads that file in every tracked project (a projects folder, default: the folder that contains the
+    template, plus the registered projects elsewhere) and prints one Markdown list of
     the suggestions that are still open (status `待決定` or empty), oldest first, with the
     project, its framework version and the file to edit afterwards.
 
@@ -18,19 +19,18 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from project_template.config.settings import TEMPLATE_ROOT
+from project_template.services import update_all
 
 logger = logging.getLogger(__name__)
 # Projects normally sit next to the template (e.g. ~/Desktop/projects/01 project_template and
 # ~/Desktop/projects/<project>), so the default follows the template wherever it is moved.
 DEFAULT_ROOT = TEMPLATE_ROOT.parent
 FEEDBACK_REL = Path("docs") / "TEMPLATE_FEEDBACK.md"
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "legacy", ".skills-cache", "__pycache__", "dist", "build"}
 CLOSED_STATUSES = {"已採用", "不採用", "adopted", "rejected", "done"}
 CELL_SPLIT = re.compile(r"(?<!\\)\|")
 
@@ -58,30 +58,19 @@ class Suggestion:
     status: str
 
 
-def find_feedback_files(roots: list[Path], depth: int) -> list[Path]:
-    """Find `docs/TEMPLATE_FEEDBACK.md` files below the given folders.
+def find_feedback_files(roots: list[Path], depth: int, registered: bool = False) -> list[Path]:
+    """Find the `docs/TEMPLATE_FEEDBACK.md` of every tracked project.
 
     Args:
         roots: Folders that contain projects.
         depth: How many folder levels below each root a project may sit.
+        registered: Also read registered projects outside `roots` (`update_all.tracked_projects()`).
 
     Returns:
         Sorted feedback file paths (the template itself is skipped).
     """
-    found: set[Path] = set()
-    for root in roots:
-        base = root.expanduser().resolve()
-        if not base.is_dir():
-            logger.warning(f"⚠️ 找不到資料夾：{base}")
-            continue
-        for current, dirs, _files in os.walk(base):
-            here = Path(current)
-            level = len(here.relative_to(base).parts)
-            dirs[:] = [] if level >= depth else [d for d in dirs if d not in SKIP_DIRS]
-            candidate = here / FEEDBACK_REL
-            if here != TEMPLATE_ROOT and candidate.is_file():
-                found.add(candidate)
-    return sorted(found)
+    projects = update_all.tracked_projects(roots, depth, registered)
+    return sorted(p / FEEDBACK_REL for p in projects if (p / FEEDBACK_REL).is_file())
 
 
 def framework_version(project: Path) -> str:
@@ -175,17 +164,18 @@ def render_report(items: list[Suggestion], scanned: int, show_all: bool) -> str:
     return "\n".join(lines)
 
 
-def collect(roots: list[Path], depth: int, show_all: bool) -> str:
+def collect(roots: list[Path], depth: int, show_all: bool, registered: bool = False) -> str:
     """Scan the projects and build the combined Markdown list.
 
     Args:
         roots: Folders that contain projects.
         depth: How many folder levels below each root a project may sit.
         show_all: Include adopted / rejected suggestions too.
+        registered: Also read registered projects outside `roots`.
 
     Returns:
         Markdown text.
     """
-    files = find_feedback_files(roots, depth)
+    files = find_feedback_files(roots, depth, registered)
     items = [s for f in files for s in read_suggestions(f)]
     return render_report(items if show_all else [s for s in items if is_open(s)], len(files), show_all)

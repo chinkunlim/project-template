@@ -4,8 +4,9 @@ Purpose:
     Each project gets template improvements through the framework updater
     (`.agents/bin/update_framework.py`), which never overwrites files the project changed (it
     saves `<file>.template` instead). With many projects that is one command per project, so this tool:
-      1. finds every project below a folder (default: the folder that contains the template)
-         with `.agents/framework.lock` + `scripts/agentctl.py`;
+      1. finds every tracked project (`tracked_projects()`): the ones below a folder (default: the
+         folder that contains the template) with `.agents/framework.lock` + `scripts/agentctl.py`,
+         plus the registered ones (`.local/projects.json`) that still exist, wherever they are;
       2. by default only PREVIEWS: runs the TEMPLATE's updater on each project with
          `--project <path> --dry-run` (the template's copy is always the newest, so projects
          whose own updater predates a layout change still update) and prints one table
@@ -22,7 +23,8 @@ Safety:
 
 Usage:
     `scripts/update_all.py` (see `entrypoints/update_all_cli.py`) and the web page call
-    `find_projects()`, `preview()`, `classify()` and `apply()`.
+    `tracked_projects()`, `preview()`, `classify()` and `apply()`. The overview, project list, feedback
+    and update of the page / API / MCP all use `tracked_projects()`, so they see the same projects.
 """
 from __future__ import annotations
 
@@ -34,6 +36,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from project_template.adapters import project_registry
 from project_template.config.settings import TEMPLATE_ROOT, child_env
 
 logger = logging.getLogger(__name__)
@@ -114,6 +117,47 @@ def update_framework(project: Path, *args: str) -> subprocess.CompletedProcess[s
     return run([sys.executable, str(UPDATER), "--from", str(TEMPLATE_ROOT), "--project", str(project), *args], project)
 
 
+def is_project(folder: Path) -> bool:
+    """Tell whether a folder is a project made with this template (not the template itself).
+
+    Args:
+        folder: Folder to check.
+
+    Returns:
+        True when it has `.agents/framework.lock` and `scripts/agentctl.py`.
+    """
+    resolved = folder.resolve()
+    return resolved != TEMPLATE_ROOT and (resolved / ".agents" / "framework.lock").is_file() \
+        and (resolved / "scripts" / "agentctl.py").is_file()
+
+
+def registered_projects() -> list[Path]:
+    """Projects recorded in the registry whose folder still exists and is still a template project.
+
+    Returns:
+        Sorted resolved project roots (moved or deleted folders are left out).
+    """
+    return sorted({Path(r["path"]).resolve() for r in project_registry.load() if r["exists"] and is_project(Path(r["path"]))})
+
+
+def tracked_projects(roots: list[Path], depth: int = 3, registered: bool = True) -> list[Path]:
+    """Every project to work on: the ones found below `roots` plus (by default) the registered ones.
+
+    Args:
+        roots: Folders that contain projects.
+        depth: How many folder levels below each root a project may sit.
+        registered: Also include registered projects outside `roots`.
+
+    Returns:
+        Sorted resolved project roots, each once.
+    """
+    found = set(find_projects(roots, depth))
+    if registered:
+        found.update(registered_projects())
+    logger.debug(f"🔎 追蹤 {len(found)} 個專案（資料夾 {len(roots)} 個{'＋登記清單' if registered else ''}）")
+    return sorted(found)
+
+
 def find_projects(roots: list[Path], depth: int) -> list[Path]:
     """Find projects created from this template below the given folders.
 
@@ -134,8 +178,8 @@ def find_projects(roots: list[Path], depth: int) -> list[Path]:
             here = Path(current)
             level = len(here.relative_to(base).parts)
             dirs[:] = [] if level >= depth else [d for d in dirs if d not in SKIP_DIRS]
-            if here != TEMPLATE_ROOT and (here / ".agents" / "framework.lock").is_file() and (here / "scripts" / "agentctl.py").is_file():
-                found.add(here)
+            if is_project(here):
+                found.add(here.resolve())
                 dirs[:] = []  # projects are not nested inside projects
     return sorted(found)
 

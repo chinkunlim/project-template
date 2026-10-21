@@ -8,7 +8,7 @@ Purpose:
         (Open WebUI → Admin → Integrations → External Tool Servers → MCP (Streamable HTTP)).
 
     Least privilege: read-only tools answer directly; tools that change something (create, migrate,
-    `doctor-fix`, `setup`, update) only describe the commands they would run unless `confirm=True`,
+    register an existing project, `doctor-fix`, `setup`, update, push) only describe the commands they would run unless `confirm=True`,
     so an agent must ask the user first.
 
 Dependencies:
@@ -110,6 +110,43 @@ def push_project(project: str, folder: str = "", confirm: bool = False) -> str:
         (p["path"] for p in ts.overview(ts.resolve_root(folder)) if p["name"] == project and p.get("exists")), "")
     title, steps = ts.push_steps({"path": path})
     return _run(title, steps) if confirm else _pending(title, steps)
+
+
+def register_project(path: str, confirm: bool = False) -> str:
+    """Add an existing project folder (made with the template, possibly outside the projects folder) to the
+    registry, so the overview, feedback and framework update include it. Folders without
+    .agents/framework.lock + scripts/agentctl.py are refused (use migrate_project for old projects).
+
+    Args:
+        path: Absolute project folder.
+        confirm: Must be True to record it (after the user agreed).
+
+    Returns:
+        What would be added (without confirm) or the result.
+    """
+    found = ts.register_existing(path)
+    if found["already"]:
+        return f"{found['path']} is already registered."
+    if not confirm:
+        return f"Not run yet — add {found['path']} to the template's project registry. Ask the user; call again with confirm=True."
+    ts.add_existing(path)
+    return f"Registered {found['path']}."
+
+
+def refresh_remote_status(project: str = "", folder: str = "") -> str:
+    """Run `git fetch` in one or every tracked project so project_overview's ahead / behind counts are current.
+    Only remote-tracking refs change (no files, no commits, no push).
+
+    Args:
+        project: Absolute project folder; empty = every tracked project with a git remote.
+        folder: Folder to scan when no project is given; empty = default projects folder.
+
+    Returns:
+        The job state and output.
+    """
+    title, steps = ts.fetch_steps({"path": project}, ts.resolve_root(folder))
+    job = ts.wait_for(ts.RUNNER.start(title, steps, keep_going=True))
+    return f"{job.title}: {job.state}\n" + "\n".join(job.log[-30:])
 
 
 def preview_data_folder(name: str, folder: str = "", data_dir: str = "") -> dict[str, Any]:
@@ -248,6 +285,8 @@ TOOLS = (
     list_projects,
     project_overview,
     push_project,
+    register_project,
+    refresh_remote_status,
     preview_data_folder,
     create_project,
     migrate_project,

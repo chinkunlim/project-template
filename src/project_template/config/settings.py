@@ -8,6 +8,7 @@ Purpose:
 
 Main items:
     - `TEMPLATE_ROOT`, `FRAMEWORK_LIB`, `REGISTRY_FILE`, `WEB_PAGE` : fixed paths.
+    - `registry_file()` : the project registry (`TEMPLATE_REGISTRY_FILE` overrides `REGISTRY_FILE`, used by the tests).
     - `env_flag()` / `env_value()` / `set_env()` : read or set one environment variable.
     - `child_env()` : environment for commands run inside a project (without the template's DATA_DIR).
 """
@@ -38,6 +39,16 @@ def env_value(name: str, default: str = "") -> str:
         The value with surrounding spaces removed.
     """
     return os.environ.get(name, default).strip()
+
+
+def registry_file() -> Path:
+    """Where the registry of created / migrated / added projects is stored.
+
+    Returns:
+        `TEMPLATE_REGISTRY_FILE` when set (the tests point it at a temporary file), else `.local/projects.json`.
+    """
+    override = env_value("TEMPLATE_REGISTRY_FILE")
+    return Path(override).expanduser() if override else REGISTRY_FILE
 
 
 def env_flag(name: str) -> bool:

@@ -6,6 +6,9 @@ The template's version is the framework version that projects record in `.agents
 
 ## [Unreleased]
 
+### Added
+- feat(tools): every action tracks registered projects; add existing project and git fetch (by `@claude-code`)
+
 ## [3.2.0] - 2026-10-21
 ### Changed
 - The template uses the layout of the projects it creates (ADR-001): framework files moved to

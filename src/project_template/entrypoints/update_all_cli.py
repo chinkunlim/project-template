@@ -4,10 +4,14 @@ Purpose:
     Previews by default; with `--apply` asks once, then updates every clean project and commits
     the ones without conflicts whose `agentctl check` passes. Nothing is pushed or deleted.
 
+    Without folders it works on every tracked project: the folder that contains the template plus the
+    registered projects (`.local/projects.json`) elsewhere. With folders it scans only those, unless
+    `--registered` is given too.
+
 Usage:
-    python3 scripts/update_all.py                      # preview only
+    python3 scripts/update_all.py                      # preview only (template's folder + registered projects)
     python3 scripts/update_all.py --apply              # asks once, then updates
-    python3 scripts/update_all.py ~/work --apply --yes --no-commit
+    python3 scripts/update_all.py ~/work --registered --apply --yes --no-commit
 """
 from __future__ import annotations
 
@@ -21,10 +25,10 @@ from project_template.services.update_all import (
     DEFAULT_ROOT,
     apply,
     classify,
-    find_projects,
     is_dirty,
     preview,
     render_table,
+    tracked_projects,
 )
 
 
@@ -54,7 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="一次更新所有專案的框架（預設只預覽）")
-    parser.add_argument("roots", nargs="*", default=[str(DEFAULT_ROOT)], help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}）")
+    parser.add_argument("roots", nargs="*", help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}＋登記清單）")
+    parser.add_argument("--registered", action="store_true", help="指定資料夾時，也加入登記清單中的專案（.local/projects.json）")
     parser.add_argument("--depth", type=int, default=3, help="專案最多在幾層子資料夾內（預設 3）")
     parser.add_argument("--apply", action="store_true", help="真的更新（預設只預覽）")
     parser.add_argument("--yes", action="store_true", help="不再詢問確認（搭配 --apply）")
@@ -63,7 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     if is_dirty(TEMPLATE_ROOT):
         print("❌ 母版有未 commit 的修改：先 commit 母版，專案才能記錄拿到的是哪個版本。", file=sys.stderr)
         return 1
-    projects = find_projects([Path(r) for r in args.roots], args.depth)
+    roots = [Path(r) for r in args.roots] or [DEFAULT_ROOT]
+    projects = tracked_projects(roots, args.depth, registered=args.registered or not args.roots)
     plans = [preview(p) for p in projects]
     ready = classify(plans)
     print(f"# 框架更新{'' if args.apply else '預覽'}（{len(projects)} 個專案，{len(ready)} 個可更新）\n")

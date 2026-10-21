@@ -2,8 +2,9 @@
 
 Purpose:
     The template page shows every project you made, even ones outside the default projects
-    folder. `scripts/init_project.py` and `scripts/migrate_project.py` record each new project here, in
-    `.local/projects.json` inside the template (git-ignored, personal to this computer).
+    folder. `scripts/init_project.py` and `scripts/migrate_project.py` record each new project here, and
+    the page's "加入既有專案" records an existing one (`how = existing`), in `.local/projects.json` inside
+    the template (git-ignored, personal to this computer; `TEMPLATE_REGISTRY_FILE` overrides it).
 
     No hard-coded locations: a project inside the folder that contains the template is stored
     relative to that folder, so moving `projects/` as a whole keeps the registry valid. Projects
@@ -17,8 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from project_template.config.settings import REGISTRY_FILE as REGISTRY
-from project_template.config.settings import TEMPLATE_ROOT, env_flag
+from project_template.config.settings import TEMPLATE_ROOT, env_flag, registry_file
 
 
 def _base() -> Path:
@@ -53,7 +53,8 @@ def load() -> list[dict[str, Any]]:
         Entries with `path` (absolute), `name`, `how` (init / migrate), `created` and `exists`.
     """
     try:
-        rows = json.loads(REGISTRY.read_text(encoding="utf-8")) if REGISTRY.exists() else []
+        registry = registry_file()
+        rows = json.loads(registry.read_text(encoding="utf-8")) if registry.exists() else []
     except (OSError, ValueError):
         rows = []
     out = []
@@ -70,17 +71,18 @@ def _save(rows: list[dict[str, Any]]) -> None:
     Args:
         rows: Entries with absolute `path`.
     """
-    REGISTRY.parent.mkdir(parents=True, exist_ok=True)
+    registry = registry_file()
+    registry.parent.mkdir(parents=True, exist_ok=True)
     data = [{k: v for k, v in {**r, "path": _stored(Path(r["path"]))}.items() if k != "exists"} for r in rows]
-    REGISTRY.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    registry.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def register(path: Path, how: str) -> None:
-    """Record a created or migrated project (once per folder).
+    """Record a created, migrated or added project (once per folder).
 
     Args:
         path: Project folder.
-        how: `init` or `migrate`.
+        how: `init`, `migrate` or `existing`.
     """
     if env_flag("TEMPLATE_NO_REGISTRY"):
         return
