@@ -131,6 +131,36 @@ def build_template_mcp() -> Any:
         return ts.list_projects(ts.resolve_root(folder))
 
     @server.tool()
+    def project_overview(folder: str = "") -> list[dict]:
+        """Track every project made with the template: framework version, uncommitted files, commits not yet pushed
+        to GitHub, open template suggestions, whether AI tools (MCP) are configured. Read only.
+
+        Args:
+            folder: Folder to scan; empty = the folder that contains the template (registered projects are added).
+
+        Returns:
+            One status per project.
+        """
+        return ts.overview(ts.resolve_root(folder))
+
+    @server.tool()
+    def push_project(project: str, folder: str = "", confirm: bool = False) -> str:
+        """Push a project's local commits to its GitHub upstream (never force).
+
+        Args:
+            project: Project name (from project_overview) or absolute path.
+            folder: Folder to look the name up in; empty = default projects folder.
+            confirm: Must be True: show the user the unpushed commits first and push only after they agree.
+
+        Returns:
+            The command (without confirm) or the push output.
+        """
+        path = project if project.startswith("/") else next(
+            (p["path"] for p in ts.overview(ts.resolve_root(folder)) if p["name"] == project and p.get("exists")), "")
+        title, steps = ts.push_steps({"path": path})
+        return _run(title, steps) if confirm else _pending(title, steps)
+
+    @server.tool()
     def preview_data_folder(name: str, folder: str = "", data_dir: str = "") -> dict:
         """Show where a new project's data folder (DATA_DIR) will be and how it is stored.
 

@@ -60,6 +60,9 @@ from packs.language_packs import (  # noqa: E402
 )
 from project_config import FRAMEWORK_VERSION  # noqa: E402
 
+sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
+from project_registry import register as register_project  # noqa: E402
+
 DEFAULT_DESCRIPTION = "AI-assisted software project with standard structure and agent handoff."
 
 
@@ -639,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     extras = f" + {', '.join(args.addons)}" if args.addons else ""
     print(f"✅ 已建立 '{project_name}' (stack={args.stack}{extras}, skills={', '.join(skills)})：{target_dir}")
+    register_project(target_dir, "init")
     print("   下一步：cd 進去後執行 `python3 scripts/agentctl.py status`")
     return 0
 

@@ -36,6 +36,7 @@ GIT_ENV = {
     "GIT_COMMITTER_NAME": "Template Test", "GIT_COMMITTER_EMAIL": "test@example.com",
 }
 os.environ.update(GIT_ENV)
+os.environ["TEMPLATE_NO_REGISTRY"] = "1"  # tests never add their temporary projects to the user's registry
 os.environ["TEMPLATE_SKIP_UV_LOCK"] = "1"  # unit tests stay offline; see UvIntegrationTest for the real uv flow
 _DATA_HOME = tempfile.TemporaryDirectory(prefix="template-test-data-")
 os.environ["DATA_DIR"] = _DATA_HOME.name  # tests never write into the user's real ~/project-data
@@ -1171,6 +1172,40 @@ class TemplateServiceTest(unittest.TestCase):
             self.assertEqual(job.state, "done", "\n".join(job.log))
             self.assertTrue((Path(tmp) / "projects-data" / "svc-demo" / "input").is_dir())
             self.assertEqual([r["name"] for r in self.ts.list_projects(parent)], ["svc demo"])
+
+
+class OverviewTest(unittest.TestCase):
+    """Project overview: folder scan + registry, git state, push guard."""
+
+    def test_overview_registry_and_push_guard(self) -> None:
+        """Registered projects outside the folder are listed; moved ones show as missing; push needs an upstream."""
+        sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
+        import importlib
+
+        ts = importlib.import_module("template_service")
+        registry = importlib.import_module("project_registry")
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            original, registry.REGISTRY = registry.REGISTRY, base / "registry.json"
+            os.environ.pop("TEMPLATE_NO_REGISTRY", None)
+            try:
+                scaffold_project(base / "folder" / "inside", "inside", stack="generic")
+                scaffold_project(base / "elsewhere" / "outside", "outside", stack="generic")
+                registry.register(base / "elsewhere" / "outside", "init")
+                registry.register(base / "gone", "migrate")
+                rows = {r["name"]: r for r in ts.overview(base / "folder")}
+                self.assertEqual(rows["inside"]["source"], "folder")
+                self.assertEqual(rows["outside"]["source"], "registry")
+                self.assertFalse(rows["gone"]["exists"])
+                self.assertEqual(rows["inside"]["dirty"], 0)
+                self.assertEqual(rows["inside"]["upstream"], "")
+                with self.assertRaises(ValueError):
+                    ts.push_steps({"path": rows["inside"]["path"]})
+                self.assertTrue(registry.forget(rows["gone"]["path"]))
+                self.assertNotIn("gone", {r["name"] for r in ts.overview(base / "folder")})
+            finally:
+                registry.REGISTRY = original
+                os.environ["TEMPLATE_NO_REGISTRY"] = "1"
 
 
 @unittest.skipUnless(os.environ.get("TEMPLATE_UV_TESTS") and shutil.which("uv"), "set TEMPLATE_UV_TESTS=1 (needs uv + network)")

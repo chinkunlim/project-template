@@ -108,7 +108,7 @@ class CommandIn(BaseModel):
     """A framework command to run in one project."""
 
     path: str = Field(description="Absolute project folder")
-    command: str = Field(description="status, doctor, check, doctor-fix or setup")
+    command: str = Field(default="status", description="status, doctor, check, doctor-fix or setup")
     confirm: bool = Field(default=False, description="Needed for doctor-fix and setup")
 
 
@@ -324,6 +324,18 @@ def register_routes(app: FastAPI) -> None:
         """
         return ts.list_projects(ts.resolve_root(root))
 
+    @app.get("/api/overview")
+    def project_overview(root: str = "") -> list[dict]:
+        """Every tracked project: framework version, uncommitted files, unpushed commits, open suggestions, AI tools.
+
+        Args:
+            root: Folder to scan; empty = the folder that contains the template (registry entries are always added).
+
+        Returns:
+            One status per project (local only, nothing changes).
+        """
+        return ts.overview(ts.resolve_root(root))
+
     @app.get("/api/feedback")
     def collect_feedback(root: str = "", all: str = "") -> dict:  # noqa: A002 - query name used by the page
         """Template-improvement suggestions from every project's docs/TEMPLATE_FEEDBACK.md.
@@ -446,6 +458,31 @@ def register_action_routes(app: FastAPI) -> None:
         if body.command in ("doctor-fix", "setup"):
             need_confirm(body.confirm, f"agentctl {body.command}")
         return started(*ts.project_command_steps(body.model_dump()))
+
+    @app.post("/api/push", status_code=202)
+    def push_project(body: CommandIn) -> dict:
+        """Push a project's commits to its GitHub upstream. Needs confirm=true (the user agreed).
+
+        Args:
+            body: Project folder and confirmation (`command` is ignored).
+
+        Returns:
+            The started job and its commands.
+        """
+        need_confirm(body.confirm, "推送到 GitHub")
+        return started(*ts.push_steps(body.model_dump()))
+
+    @app.post("/api/registry/forget", include_in_schema=False)
+    def forget_project(body: dict) -> dict:
+        """Remove a moved or deleted project from the overview (the folder itself is not touched).
+
+        Args:
+            body: `path` as shown in the overview.
+
+        Returns:
+            Whether an entry was removed.
+        """
+        return {"removed": ts.project_registry.forget(str(body.get("path", "")))}
 
     @app.post("/api/update/preview", status_code=202)
     def preview_framework_update(body: FolderIn) -> dict:

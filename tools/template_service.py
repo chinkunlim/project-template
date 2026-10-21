@@ -14,7 +14,6 @@ Purpose:
 """
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
@@ -42,7 +41,8 @@ from packs.stack_config import (  # noqa: E402
     data_slug,
     resolve_stack,
 )
-from project_config import FRAMEWORK_VERSION  # noqa: E402
+from project_config import FRAMEWORK_VERSION, parse_toml  # noqa: E402
+import project_registry  # noqa: E402
 import update_all  # noqa: E402
 
 DEFAULT_PORT = 8766
@@ -446,3 +446,94 @@ def wait_for(job: Job, timeout: float = 900) -> Job:
     while job.state == "running" and time.monotonic() < deadline:
         time.sleep(0.3)
     return job
+
+
+def _git(project: Path, *args: str) -> str:
+    """Run a read-only git command in a project.
+
+    Args:
+        project: Project folder.
+        *args: Arguments after `git`.
+
+    Returns:
+        Trimmed output, or an empty string when git fails.
+    """
+    res = subprocess.run(["git", *args], cwd=project, capture_output=True, text=True, check=False)
+    return res.stdout.strip() if res.returncode == 0 else ""
+
+
+def project_status(project: Path) -> dict:
+    """Collect what the overview shows for one project (local only: no network, nothing changes).
+
+    Args:
+        project: Project folder.
+
+    Returns:
+        Name, stack, framework version, uncommitted files, branch, remote, ahead / behind its upstream
+        (as of the last fetch), last commit, open template suggestions and whether AI tools are configured.
+    """
+    toml_file = project / ".agents" / "project.toml"
+    settings = parse_toml(toml_file.read_text(encoding="utf-8")) if toml_file.exists() else {}
+    info_ = settings.get("project", {})
+    upstream = _git(project, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    behind, ahead = (_git(project, "rev-list", "--left-right", "--count", f"{upstream}...HEAD").split() + ["0", "0"])[:2] \
+        if upstream else ("0", "0")
+    remote = re.sub(r"//[^@/]+@", "//", _git(project, "remote", "get-url", "origin"))  # never show credentials
+    feedback_file = project / "docs" / "TEMPLATE_FEEDBACK.md"
+    suggestions = collect_feedback.read_suggestions(feedback_file) if feedback_file.exists() else []
+    return {
+        "name": project.name, "path": str(project), "exists": True,
+        "stack": info_.get("stack", ""), "addons": info_.get("addons", []),
+        "version": collect_feedback.framework_version(project), "template_version": FRAMEWORK_VERSION,
+        "dirty": len([ln for ln in _git(project, "status", "--porcelain").splitlines() if ln.strip()]),
+        "branch": _git(project, "rev-parse", "--abbrev-ref", "HEAD"), "upstream": upstream, "remote": remote,
+        "ahead": int(ahead or 0), "behind": int(behind or 0),
+        "last_commit": _git(project, "log", "-1", "--format=%h %cs %s"),
+        "open_feedback": len([x for x in suggestions if collect_feedback.is_open(x)]),
+        "mcp": (project / ".mcp.json").exists(),
+    }
+
+
+def overview(root: Path) -> list[dict]:
+    """Every project to track: found in `root` plus the ones recorded in the registry.
+
+    Args:
+        root: Folder to scan (normally the folder that contains the template).
+
+    Returns:
+        One status per project; registry entries whose folder is gone are listed with `exists: False`.
+    """
+    registry = {str(Path(r["path"]).resolve()): r for r in project_registry.load()}
+    found = {str(p.resolve()): p for p in update_all.find_projects([root], 3)}
+    in_folder = set(found)
+    for key, row in registry.items():
+        if row["exists"] and key not in found and (Path(key) / ".agents" / "framework.lock").exists():
+            found[key] = Path(key)
+    rows = []
+    for key, project in sorted(found.items(), key=lambda kv: kv[1].name.lower()):
+        status = project_status(project)
+        status["source"] = "folder" if key in in_folder else "registry"
+        status["how"] = registry.get(key, {}).get("how", "")
+        rows.append(status)
+    rows += [{"name": r["name"], "path": r["path"], "exists": False, "how": r.get("how", ""), "source": "registry"}
+             for key, r in registry.items() if not r["exists"]]
+    return rows
+
+
+def push_steps(body: dict) -> tuple[str, list[tuple[list[str], Path]]]:
+    """Build the command that pushes a project to its upstream (the user clicked / confirmed it).
+
+    Args:
+        body: `path` of the project.
+
+    Returns:
+        Tuple of job title and steps (`ALLOW_PUSH=1 git push`, which the pre-push hook lets through).
+
+    Raises:
+        ValueError: When the folder is not a project or has no upstream branch.
+    """
+    project = require_dir(body.get("path", ""), "專案")
+    if not _git(project, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"):
+        raise ValueError(f"{project.name} 沒有設定遠端分支（upstream）：先在專案內設定 GitHub 遠端並推送一次")
+    return f"推送 {project.name}", [(["env", "ALLOW_PUSH=1", "git", "push"], project)]
+

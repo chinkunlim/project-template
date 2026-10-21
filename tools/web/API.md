@@ -15,6 +15,7 @@
 | 方法 | 路徑 | 回傳 |
 |---|---|---|
 | GET | `/api/info` | 框架版本、母版位置、預設專案資料夾、可選的 stack / 附加功能 / skills |
+| GET | `/api/overview?root=` | 總覽：資料夾裡的專案＋登記過的專案；框架版本、未 commit、未推送 / 落後（以上次 fetch 為準）、待決定建議、是否有 MCP、找不到的專案 |
 | GET | `/api/projects?root=` | 用母版建立的專案：名稱、路徑、框架版本、未 commit 檔案數、最後 commit |
 | GET | `/api/feedback?root=&all=1` | 各專案 `docs/TEMPLATE_FEEDBACK.md` 的建議（`all=1` 含已決定的） |
 | GET | `/api/job` | 目前或上一個工作：`title`、`state`（running / done / failed）、`log`、`result` |
@@ -30,6 +31,8 @@
 | `/api/project-command` | `path`、`command`（`status` / `doctor` / `doctor-fix` / `setup` / `check`） | 在專案內執行 `agentctl` 指令 |
 | `/api/update/preview` | `root` | 預覽所有專案的框架更新（不修改）；結果在 `/api/job` 的 `result` |
 | `/api/update/apply` | `root`、`commit`（預設 true） | 更新可更新的專案（母版要先 commit；有衝突或 check 失敗不 commit） |
+| `/api/push` | `path`、`confirm` | 把專案的 commit 推送到它的 GitHub 遠端分支（需要 confirm；沒有 upstream 會回 400） |
+| `/api/registry/forget` | `path` | 從總覽移除登記（不動資料夾） |
 | `/api/pick-folder` | `prompt`、`start` | 開啟 macOS 資料夾選擇視窗，回傳 `path`（取消時為空） |
 | `/api/reveal` | `path` | 在 Finder 打開資料夾 |
 

@@ -48,6 +48,9 @@ from init_project import scaffold_project  # noqa: E402
 from packs.common import slugify_package_name, write_file  # noqa: E402
 from packs.language_packs import ADDON_CHOICES, STACK_CHOICES  # noqa: E402
 from packs.stack_config import data_dir_setting  # noqa: E402
+
+sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
+from project_registry import register as register_project  # noqa: E402
 from packs.migration_plan import (  # noqa: E402
     BATCH_TITLES,
     PlanContext,
@@ -409,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"❌ {exc}", file=sys.stderr)
         return 1
     print(f"✅ 已建立 {target}（{count} 個舊檔案在 legacy/，舊專案未被修改）")
+    register_project(target, "migrate")
     print("   下一步：cd 進新資料夾，閱讀 docs/migration/MIGRATION.md，再請 Agent 依 legacy-migration skill 逐批搬移。")
     return 0
 
