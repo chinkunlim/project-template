@@ -19,30 +19,30 @@
 
 ## 1. 建立新專案
 
-在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）。專案建議都放在 `~/Desktop/project/` 底下：第 4 節的 `collect_feedback.py`、`update_all.py` 預設掃描這個資料夾（放別處時在指令後面加上該資料夾）。
+在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）。專案建議和母版放在同一個資料夾（例如 `~/Desktop/projects/`）：第 4 節的 `collect_feedback.py`、`update_all.py` 預設掃描**母版所在的資料夾**，母版搬到哪裡都跟著走（專案放別處時在指令後面加上該資料夾）。
 
 ```bash
-cd "$HOME/Desktop/project/01 project_template"
+cd "$HOME/Desktop/projects/01 project_template"
 ```
 
 ```bash
-python3 init_project.py --target ~/Desktop/project/my_app --stack python
+python3 init_project.py --target ~/Desktop/projects/my_app --stack python
 ```
 
 Python + 網頁 + GAS
 
 ```bash
-python3 init_project.py --target ~/Desktop/project/my_app --stack python --with web gas
+python3 init_project.py --target ~/Desktop/projects/my_app --stack python --with web gas
 ```
 
 手機 App（Android + iOS）＋ Python 後端；只有 App 時用 `--stack mobile`
 
 ```bash
-python3 init_project.py --target ~/Desktop/project/my_app --stack python --with api mobile
+python3 init_project.py --target ~/Desktop/projects/my_app --stack python --with api mobile
 ```
 
 ```bash
-python3 init_project.py --target ~/Desktop/project/my_gas --stack gas
+python3 init_project.py --target ~/Desktop/projects/my_gas --stack gas
 python3 init_project.py --list-skills
 ```
 
@@ -61,7 +61,7 @@ python3 init_project.py --list-skills
 1. 進入新專案，檢查並修復環境（啟用 git hook、建立 `.env` 與 DATA_DIR）：
 
 ```bash
-cd ~/Desktop/project/my_app && python3 scripts/agentctl.py doctor --fix
+cd ~/Desktop/projects/my_app && python3 scripts/agentctl.py doctor --fix
 ```
 
 2. 打開 `.env` 填入金鑰；安裝依賴（只裝在專案內）：
@@ -81,7 +81,7 @@ python3 scripts/agentctl.py check
 ### 把舊專案搬進新結構
 
 ```bash
-python3 migrate_project.py --from ~/Desktop/project/old_app --target ~/Desktop/project/old_app_v2
+python3 migrate_project.py --from ~/Desktop/projects/old_app --target ~/Desktop/projects/old_app_v2
 ```
 
 - 舊專案**不會被修改**；新資料夾由舊 repo clone（保留 git 歷史），舊檔案以 `git mv` 放進 `legacy/`，再套用模板。
@@ -179,7 +179,7 @@ python3 tools/update_all.py --apply
    只更新單一專案時，在該專案內執行：
 
 ```bash
-python3 scripts/agentctl.py update --from "$HOME/Desktop/project/01 project_template"
+python3 scripts/agentctl.py update --from "$HOME/Desktop/projects/01 project_template"
 ```
 
 ---

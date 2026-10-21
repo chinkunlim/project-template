@@ -5,7 +5,8 @@ Purpose:
     Each project gets template improvements through `agentctl update --from <template>`,
     which never overwrites files the project changed (it saves `<file>.template` instead).
     With many projects that is one command per project, so this tool:
-      1. finds every project below a folder (`.agents/framework.lock` + `scripts/agentctl.py`);
+      1. finds every project below a folder (default: the folder that contains the template)
+         with `.agents/framework.lock` + `scripts/agentctl.py`;
       2. by default only PREVIEWS: runs each project's `agentctl update --dry-run` and prints
          one table (version, files to update / add, conflicts, removed files);
       3. with `--apply` (after you confirm), updates each project, re-activates its hooks
@@ -34,7 +35,9 @@ import subprocess
 import sys
 
 TEMPLATE_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ROOT = Path.home() / "Desktop" / "project"
+# Projects normally sit next to the template (e.g. ~/Desktop/projects/01 project_template and
+# ~/Desktop/projects/<project>), so the default follows the template wherever it is moved.
+DEFAULT_ROOT = TEMPLATE_ROOT.parent
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "legacy", ".skills-cache", "__pycache__", "dist", "build"}
 PLAN_LABELS = {"🔄 更新": "update", "➕ 新增": "add", "⚠️ 專案已修改": "conflict", "🗑️ 母版已移除": "removed"}
 VERSION_RE = re.compile(r"框架 v([0-9A-Za-z.?+-]+) ➔ v([0-9A-Za-z.?+-]+)")
@@ -248,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         0 on success, 1 when the template has uncommitted changes or an update failed.
     """
     parser = argparse.ArgumentParser(description="一次更新所有專案的框架（預設只預覽）")
-    parser.add_argument("roots", nargs="*", default=[str(DEFAULT_ROOT)], help=f"放專案的資料夾（預設 {DEFAULT_ROOT}）")
+    parser.add_argument("roots", nargs="*", default=[str(DEFAULT_ROOT)], help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}）")
     parser.add_argument("--depth", type=int, default=3, help="專案最多在幾層子資料夾內（預設 3）")
     parser.add_argument("--apply", action="store_true", help="真的更新（預設只預覽）")
     parser.add_argument("--yes", action="store_true", help="不再詢問確認（搭配 --apply）")

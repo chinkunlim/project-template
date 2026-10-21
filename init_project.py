@@ -16,9 +16,9 @@ Purpose:
       - git repo with a version-controlled pre-commit hook (`core.hooksPath .agents/hooks`)
 
 Usage:
-    python3 init_project.py --target ~/Desktop/project/my_app --stack python
-    python3 init_project.py --target ~/Desktop/project/app --stack python --with web gas
-    python3 init_project.py --target ~/Desktop/project/web --stack node --skills legacy-migration
+    python3 init_project.py --target ~/Desktop/projects/my_app --stack python
+    python3 init_project.py --target ~/Desktop/projects/app --stack python --with web gas
+    python3 init_project.py --target ~/Desktop/projects/web --stack node --skills legacy-migration
     python3 init_project.py --list-skills
 """
 

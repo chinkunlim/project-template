@@ -4,7 +4,7 @@
 Purpose:
     Each project records "every project should do this" ideas in its own
     `docs/TEMPLATE_FEEDBACK.md`. With many projects those ideas are scattered, so this
-    tool scans a projects folder, reads every such file, and prints one Markdown list of
+    tool scans a projects folder (default: the folder that contains the template), reads every such file, and prints one Markdown list of
     the suggestions that are still open (status `待決定` or empty), oldest first, with the
     project, its framework version and the file to edit afterwards.
 
@@ -13,7 +13,7 @@ Purpose:
 
 Usage:
     python3 tools/collect_feedback.py
-    python3 tools/collect_feedback.py ~/Desktop/project ~/work --depth 4
+    python3 tools/collect_feedback.py ~/Desktop/projects ~/work --depth 4
     python3 tools/collect_feedback.py --all --out feedback-review.md
 """
 from __future__ import annotations
@@ -27,7 +27,9 @@ import re
 import sys
 
 TEMPLATE_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ROOT = Path.home() / "Desktop" / "project"
+# Projects normally sit next to the template (e.g. ~/Desktop/projects/01 project_template and
+# ~/Desktop/projects/<project>), so the default follows the template wherever it is moved.
+DEFAULT_ROOT = TEMPLATE_ROOT.parent
 FEEDBACK_REL = Path("docs") / "TEMPLATE_FEEDBACK.md"
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "legacy", ".skills-cache", "__pycache__", "dist", "build"}
 CLOSED_STATUSES = {"已採用", "不採用", "adopted", "rejected", "done"}
@@ -183,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         0 (the tool only reads).
     """
     parser = argparse.ArgumentParser(description="彙整所有專案的 docs/TEMPLATE_FEEDBACK.md（只讀，不修改專案）")
-    parser.add_argument("roots", nargs="*", default=[str(DEFAULT_ROOT)], help=f"放專案的資料夾（預設 {DEFAULT_ROOT}）")
+    parser.add_argument("roots", nargs="*", default=[str(DEFAULT_ROOT)], help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}）")
     parser.add_argument("--depth", type=int, default=3, help="專案最多在幾層子資料夾內（預設 3）")
     parser.add_argument("--all", action="store_true", help="也列出已採用 / 不採用的建議")
     parser.add_argument("--out", default="", help="把結果寫到這個 Markdown 檔（預設印在終端機）")
