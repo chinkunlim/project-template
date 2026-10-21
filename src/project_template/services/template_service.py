@@ -585,6 +585,8 @@ def add_existing(raw: str) -> dict[str, Any]:
 def fetch_steps(body: dict[str, Any], root: Path) -> tuple[str, list[tuple[list[str], Path]]]:
     """Build the `git fetch` commands that refresh the unpushed / behind counts (only remote-tracking refs change).
 
+    No `confirm` is needed: no files, commits or pushes change (Refs: ADR-002).
+
     Args:
         body: Optional `path` of one project; empty = every tracked project that has a remote.
         root: Folder to scan when no path is given.

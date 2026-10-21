@@ -141,7 +141,7 @@ def registered_projects() -> list[Path]:
 
 
 def tracked_projects(roots: list[Path], depth: int = 3, registered: bool = True) -> list[Path]:
-    """Every project to work on: the ones found below `roots` plus (by default) the registered ones.
+    """Every project to work on: the ones found below `roots` plus (by default) the registered ones (Refs: ADR-002).
 
     Args:
         roots: Folders that contain projects.

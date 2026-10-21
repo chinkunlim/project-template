@@ -13,3 +13,4 @@
 | ADR | 標題 | 狀態 | 日期 | 相關程式 |
 |---|---|---|---|---|
 | [ADR-001](001-template-uses-project-layout.md) | 母版本身採用新專案的結構 | Accepted | 2026-10-21 | TODO |
+| [ADR-002](002-tracked-projects.md) | 所有動作作用在同一組追蹤的專案（資料夾＋登記清單） | Accepted | 2026-10-21 | `services/update_all.py`（`tracked_projects`）、`services/template_service.py`、`entrypoints/{web_routes,template_mcp,update_all_cli,feedback_cli,openwebui_tool}.py` |
