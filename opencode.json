@@ -5,7 +5,7 @@
         "type": "local",
         "command": [
           "python3",
-          "tools/template_mcp.py"
+          "scripts/template_mcp.py"
         ]
       }
     }

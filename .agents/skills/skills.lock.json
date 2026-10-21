@@ -1,0 +1,57 @@
+{
+  "_comment": "Pinned upstream reference sources for skills. Fetched on demand by `python3 scripts/sync_github_skills.py` (template only) into a git-ignored cache (never into .agents/skills or .claude/skills). `commit` pins the exact revision; update it only with `--update` after reviewing the upstream changes. `license` must be checked before copying any upstream content into a project.",
+  "sources": {
+    "obra-superpowers": {
+      "repo": "https://github.com/obra/superpowers.git",
+      "commit": "bb92a77",
+      "license": "verify upstream LICENSE",
+      "used_by": [
+        "tdd-bugfix",
+        "code-review-guard",
+        "session-closeout"
+      ],
+      "paths": [
+        "skills/test-driven-development",
+        "skills/systematic-debugging",
+        "skills/requesting-code-review",
+        "skills/verification-before-completion"
+      ]
+    },
+    "anthropic-skills": {
+      "repo": "https://github.com/anthropics/skills.git",
+      "commit": "dbd4588",
+      "license": "Apache-2.0 (per skill LICENSE.txt)",
+      "used_by": [
+        "frontend-design"
+      ],
+      "paths": [
+        "skills/frontend-design",
+        "skills/webapp-testing"
+      ]
+    },
+    "vercel-agent-skills": {
+      "repo": "https://github.com/vercel-labs/agent-skills.git",
+      "commit": "063bee9",
+      "license": "verify upstream LICENSE",
+      "used_by": [
+        "frontend-design"
+      ],
+      "paths": [
+        "skills/web-design-guidelines",
+        "skills/react-best-practices"
+      ]
+    },
+    "taste-skill": {
+      "repo": "https://github.com/Leonxlnx/taste-skill.git",
+      "commit": "b9ca2fd",
+      "license": "verify upstream LICENSE",
+      "used_by": [
+        "frontend-design"
+      ],
+      "paths": [
+        "skills",
+        "README.md"
+      ]
+    }
+  }
+}

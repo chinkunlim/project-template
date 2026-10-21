@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<!--
+  Project template web page: create a project (name, location, data folder, stack, add-ons, skills),
+  migrate an old project, run doctor / check / setup on existing projects, collect template feedback
+  and preview / apply the framework update. Talks to the local JSON API of scripts/web_ui.py (/api/*);
+  changing requests carry confirm=true because the user clicked the button.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>專案母版</title>
+<style>
+  /* Theme tokens (same palette as the literature-fetch page): light by default, dark on request */
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5f6b7a; --line: #e2e6ec;
+    --accent: #2f5bd3; --accent-ink: #ffffff; --soft: #eef2fb;
+    --ok: #1f8a4c; --warn: #b26b00; --bad: #c0392b;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b2029; --text: #e6e9ef; --muted: #9aa4b2; --line: #2b323e;
+      --accent: #6d8ff0; --accent-ink: #0d1220; --soft: #222a3a;
+      --ok: #4cc27f; --warn: #e3a33d; --bad: #ee6b5d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .tabs button[aria-selected="true"] { background: var(--soft); border-color: var(--accent); }
+  button { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px;
+           padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.small { padding: 3px 9px; font-size: 13px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .field { margin-bottom: 14px; }
+  .field > label { display: block; font-weight: 600; margin-bottom: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input[type=text], select { flex: 1; min-width: 180px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+                             background: var(--bg); color: var(--text); font: inherit; }
+  .field > input[type=text] { width: 100%; }
+  .field > select { min-width: 240px; flex: none; }
+  label.check { display: inline-flex; gap: 6px; align-items: flex-start; margin: 0 14px 6px 0; font-weight: 400; }
+  label.check.disabled { opacity: .45; }
+  .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; border-top: 0; white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+  .chip { font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--soft); white-space: nowrap; }
+  .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+  .msg { font-size: 14px; min-height: 1.2em; margin-top: 8px; }
+  .msg.err { color: var(--bad); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 340px;
+        overflow: auto; font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
+  code { font-size: 13px; }
+  [hidden] { display: none !important; }
+  dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text);
+           width: min(560px, calc(100vw - 32px)); padding: 16px; }
+  dialog ul { list-style: none; padding: 0; margin: 8px 0; max-height: 320px; overflow: auto; }
+  dialog li button { width: 100%; text-align: left; border: 0; border-radius: 6px; }
+  @media (max-width: 600px) {
+    input[type=text], select { min-width: 0; width: 100%; }
+    /* Tables become stacked cards on phones */
+    .table-wrap table, .table-wrap tbody, .table-wrap tr, .table-wrap td { display: block; width: 100%; }
+    .table-wrap tr:first-child:has(th) { display: none; }
+    .table-wrap tr { border-top: 1px solid var(--line); padding: 10px 0; }
+    .table-wrap td { border: 0; padding: 2px 0; }
+    .table-wrap .hint { word-break: break-all; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>專案母版</h1>
+  <p class="sub" id="sub">載入中…</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="projects" aria-selected="true">總覽</button>
+    <button role="tab" data-tab="create" aria-selected="false">建立專案</button>
+    <button role="tab" data-tab="migrate" aria-selected="false">遷移舊專案</button>
+    <button role="tab" data-tab="feedback" aria-selected="false">改進建議</button>
+    <button role="tab" data-tab="update" aria-selected="false">更新框架</button>
+  </div>
+
+  <section class="panel" data-panel="create" hidden>
+    <h2>建立新專案</h2>
+    <div class="field">
+      <label for="c-name">專案名稱（也是資料夾名稱）</label>
+      <input type="text" id="c-name" placeholder="例如 download_literature">
+    </div>
+    <div class="field">
+      <label for="c-parent">建立在哪個資料夾</label>
+      <div class="row"><input type="text" id="c-parent"><button data-pick="c-parent">選擇…</button></div>
+      <p class="hint" id="c-target"></p>
+    </div>
+    <div class="field">
+      <label for="c-data">資料資料夾（DATA_DIR：輸入、輸出、資料庫、log，在專案外）</label>
+      <div class="row"><input type="text" id="c-data" placeholder="留空 = 預設"><button data-pick="c-data">選擇…</button>
+        <button class="small" id="c-data-default">用預設</button></div>
+      <p class="hint" id="c-data-preview"></p>
+    </div>
+    <div class="field">
+      <label for="c-stack">主要語言</label>
+      <select id="c-stack"></select>
+    </div>
+    <div class="field">
+      <label>附加功能</label>
+      <div class="grid" id="c-addons"></div>
+    </div>
+    <div class="field">
+      <label>額外 Skills（核心與依語言的 skills 會自動安裝）</label>
+      <div class="grid" id="c-skills"></div>
+    </div>
+    <div class="field">
+      <label for="c-desc">一句話描述（選填）</label>
+      <input type="text" id="c-desc" placeholder="例如：從 APA 清單自動下載論文 PDF">
+    </div>
+    <div class="field" id="c-tz-field" hidden>
+      <label for="c-tz">GAS 時區（選填，預設讀這台電腦）</label>
+      <input type="text" id="c-tz" placeholder="例如 Asia/Taipei">
+    </div>
+    <div class="field">
+      <label>建立後</label>
+      <label class="check"><input type="checkbox" id="c-doctor" checked>檢查並修復環境（doctor --fix：git hook、.env、資料資料夾）</label>
+      <label class="check"><input type="checkbox" id="c-setup">安裝依賴（setup --install，需要網路）</label>
+      <label class="check"><input type="checkbox" id="c-check">執行 check</label>
+      <label class="check"><input type="checkbox" id="c-mit">產生 MIT LICENSE</label>
+    </div>
+    <button class="primary" id="c-go">建立專案</button>
+    <div class="msg" id="c-msg"></div>
+  </section>
+
+  <section class="panel" data-panel="migrate" hidden>
+    <h2>把舊專案搬進新結構</h2>
+    <p class="hint">舊專案不會被修改：新資料夾由舊 repo clone（保留 git 歷史），舊檔案放進 <code>legacy/</code>，並產生 <code>docs/migration/MIGRATION.md</code> 與分批任務卡。舊專案要先 commit。</p>
+    <div class="field">
+      <label for="m-source">舊專案資料夾</label>
+      <div class="row"><input type="text" id="m-source"><button data-pick="m-source">選擇…</button></div>
+    </div>
+    <div class="field">
+      <label for="m-name">新專案名稱</label>
+      <input type="text" id="m-name" placeholder="預設為舊專案名稱">
+    </div>
+    <div class="field">
+      <label for="m-parent">建立在哪個資料夾</label>
+      <div class="row"><input type="text" id="m-parent"><button data-pick="m-parent">選擇…</button></div>
+    </div>
+    <div class="field">
+      <label for="m-data">資料資料夾</label>
+      <div class="row"><input type="text" id="m-data" placeholder="留空 = 預設"><button data-pick="m-data">選擇…</button></div>
+      <p class="hint" id="m-data-preview"></p>
+    </div>
+    <div class="field">
+      <label>模式</label>
+      <label class="check"><input type="radio" name="m-mode" value="maintain" checked>維護：舊專案已完工，只整理結構與規範（保留 Flask）</label>
+      <label class="check"><input type="radio" name="m-mode" value="develop">繼續開發：Flask 全部改寫成 FastAPI</label>
+    </div>
+    <div class="field">
+      <label for="m-stack">主要語言</label>
+      <select id="m-stack"></select>
+      <p class="hint">「自動偵測」會依舊專案的檔案判斷語言與附加功能。</p>
+    </div>
+    <button class="primary" id="m-go">開始遷移</button>
+    <div class="msg" id="m-msg"></div>
+  </section>
+
+  <section class="panel" data-panel="projects">
+    <h2>我建立的專案</h2>
+    <p class="hint">母版所在資料夾裡的專案，加上用母版建立或遷移過的專案（記錄在母版的 .local/projects.json，不進 git）。「未推送」以上次 git fetch 為準。</p>
+    <div class="row"><input type="text" id="p-root"><button data-pick="p-root">選擇…</button><button class="primary" id="p-scan">重新整理</button></div>
+    <div class="chips" id="p-summary" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>
+    <div class="row" style="margin-bottom:8px">
+      <button id="p-check-updates">檢查框架更新</button>
+      <button id="p-update-all" hidden>一鍵更新全部</button>
+      <button id="p-feedback">收集改進建議</button>
+    </div>
+    <div class="table-wrap"><table id="p-table"></table></div>
+    <div class="msg" id="p-msg"></div>
+  </section>
+
+  <section class="panel" data-panel="feedback" hidden>
+    <h2>改進建議（各專案的 docs/TEMPLATE_FEEDBACK.md，只讀）</h2>
+    <div class="row"><input type="text" id="f-root"><button data-pick="f-root">選擇…</button>
+      <label class="check"><input type="checkbox" id="f-all">也列出已決定的</label><button class="primary" id="f-scan">彙整</button></div>
+    <div class="table-wrap"><table id="f-table"></table></div>
+    <div class="msg" id="f-msg"></div>
+  </section>
+
+  <section class="panel" data-panel="update" hidden>
+    <h2>更新所有專案的框架</h2>
+    <p class="hint">先預覽（不會改任何東西）。更新時：專案改過的檔案不覆蓋（另存 *.template）、有未 commit 修改的專案會略過、母版本身要先 commit；不會推送。</p>
+    <div class="row"><input type="text" id="u-root"><button data-pick="u-root">選擇…</button><button class="primary" id="u-preview">預覽</button></div>
+    <div class="table-wrap"><table id="u-table"></table></div>
+    <div class="row" id="u-apply-row" hidden>
+      <label class="check"><input type="checkbox" id="u-commit" checked>沒有衝突且 check 通過的專案自動本機 commit</label>
+      <button id="u-apply">更新可更新的專案</button>
+    </div>
+    <div class="msg" id="u-msg"></div>
+  </section>
+
+  <section class="panel" id="job" hidden>
+    <div class="row" style="justify-content: space-between"><h2 id="job-title" style="margin:0"></h2><span class="chip" id="job-state"></span></div>
+    <pre id="job-log"></pre>
+    <div class="msg" id="job-msg"></div>
+  </section>
+</main>
+
+<dialog id="browser">
+  <h2>選擇資料夾</h2>
+  <div class="row"><input type="text" id="b-path"><button class="small" id="b-up">上一層</button></div>
+  <ul id="b-list"></ul>
+  <div class="row" style="justify-content: flex-end"><button id="b-cancel">取消</button><button class="primary" id="b-ok">選這個資料夾</button></div>
+</dialog>
+
+<script>
+"use strict";
+
+const STACKS = {
+  python: "Python（預設）", node: "Node.js", gas: "Google Apps Script", go: "Go", rust: "Rust", generic: "通用（沒有語言範本）",
+  both: "Python + 網頁", all: "Python + 網頁 + GAS", mobile: "只有手機 App（Expo）",
+};
+const ADDONS = {
+  web: "網頁（web/ 純 HTML+CSS+JS）", gas: "Google Apps Script（gas/）", mobile: "手機 App（mobile/ Expo，Android + iOS）",
+  api: "HTTP API（FastAPI，只綁 127.0.0.1）", db: "資料庫（SQLAlchemy + Alembic + SQLite）",
+  ollama: "本機模型（Ollama client + 硬體檢查）", evals: "輸出品質評估",
+};
+let INFO = null;
+let OVERVIEW = [];
+let UPDATES = {};
+let pollTimer = null;
+let afterJob = null;
+
+/**
+ * Shortcut for document.getElementById.
+ * @param {string} id Element id.
+ * @returns {HTMLElement} The element.
+ */
+const $ = (id) => document.getElementById(id);
+
+/**
+ * Call the local JSON API.
+ * @param {string} method HTTP method.
+ * @param {string} path API path such as /api/info.
+ * @param {object} [body] JSON body for POST.
+ * @returns {Promise<any>} Decoded JSON; throws Error with the server's message on failure.
+ */
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+/**
+ * Show a message under a form.
+ * @param {string} id Message element id.
+ * @param {string} text Message text.
+ * @param {boolean} [isError] Style as an error.
+ * @returns {void}
+ */
+function say(id, text, isError) {
+  $(id).textContent = text;
+  $(id).classList.toggle("err", Boolean(isError));
+}
+
+/**
+ * Escape text for HTML.
+ * @param {any} value Value to show.
+ * @returns {string} Escaped text.
+ */
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/**
+ * Switch the visible tab.
+ * @param {string} name Tab name (data-tab value).
+ * @returns {void}
+ */
+function showTab(name) {
+  document.querySelectorAll("[role=tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  document.querySelectorAll("[data-panel]").forEach((p) => { p.hidden = p.dataset.panel !== name; });
+}
+
+/**
+ * Let the user choose a folder: the macOS dialog when available, otherwise the built-in browser.
+ * @param {string} inputId Text field that receives the chosen path.
+ * @returns {Promise<void>} Resolves when a folder was chosen or the dialog was cancelled.
+ */
+async function pickFolder(inputId) {
+  const start = $(inputId).value || INFO.projects_root;
+  if (INFO.native_picker) {
+    try {
+      const res = await api("POST", "/api/pick-folder", { prompt: "選擇資料夾", start });
+      if (res.path) { $(inputId).value = res.path; $(inputId).dispatchEvent(new Event("input")); }
+      return;
+    } catch (err) { /* fall back to the built-in browser */ }
+  }
+  await openBrowser(inputId, start);
+}
+
+/**
+ * Built-in folder browser (used when the native dialog is not available).
+ * @param {string} inputId Text field that receives the chosen path.
+ * @param {string} start Folder to show first.
+ * @returns {Promise<void>} Resolves when the dialog closes.
+ */
+async function openBrowser(inputId, start) {
+  const dialog = $("browser");
+  /**
+   * Show the sub-folders of one folder.
+   * @param {string} path Folder to list.
+   * @returns {Promise<void>} Resolves when the list is drawn.
+   */
+  const load = async (path) => {
+    try {
+      const data = await api("GET", `/api/dirs?path=${encodeURIComponent(path)}`);
+      $("b-path").value = data.path;
+      $("b-up").onclick = () => load(data.parent);
+      $("b-list").innerHTML = data.dirs.map((d) => `<li><button data-dir="${esc(d)}">📁 ${esc(d)}</button></li>`).join("") || "<li class='hint'>（沒有子資料夾）</li>";
+      $("b-list").querySelectorAll("[data-dir]").forEach((b) => { b.onclick = () => load(`${data.path}/${b.dataset.dir}`); });
+    } catch (err) { $("b-list").innerHTML = `<li class="hint">${esc(err.message)}</li>`; }
+  };
+  $("b-path").onchange = () => load($("b-path").value);
+  $("b-cancel").onclick = () => dialog.close();
+  $("b-ok").onclick = () => { $(inputId).value = $("b-path").value; $(inputId).dispatchEvent(new Event("input")); dialog.close(); };
+  await load(start);
+  dialog.showModal();
+}
+
+/**
+ * Draw the stack choices and add-on / skill checkboxes.
+ * @returns {void}
+ */
+function drawChoices() {
+  $("c-stack").innerHTML = INFO.stacks.map((s) => `<option value="${s}">${esc(STACKS[s] || s)}</option>`).join("");
+  $("m-stack").innerHTML = `<option value="">自動偵測</option>` + $("c-stack").innerHTML;
+  $("c-addons").innerHTML = INFO.addons.map((a) => `<label class="check" data-addon="${a}"><input type="checkbox" value="${a}">${esc(ADDONS[a] || a)}</label>`).join("");
+  const optional = INFO.skills.filter((s) => s.tier === "optional");
+  $("c-skills").innerHTML = optional.map((s) => `<label class="check"><input type="checkbox" value="${esc(s.name)}"><span><code>${esc(s.name)}</code><br><span class="hint">${esc(s.trigger)}</span></span></label>`).join("") || "<span class='hint'>（沒有選用的 skills）</span>";
+  updateAddons();
+}
+
+/**
+ * Disable add-ons that do not fit the chosen stack (api / db / ollama need Python).
+ * @returns {void}
+ */
+function updateAddons() {
+  const stack = $("c-stack").value;
+  const python = ["python", "both", "all"].includes(stack);
+  document.querySelectorAll("[data-addon]").forEach((label) => {
+    const box = label.querySelector("input");
+    const off = INFO.python_only.includes(box.value) && !python;
+    box.disabled = off;
+    if (off) box.checked = false;
+    label.classList.toggle("disabled", off);
+  });
+  const gas = stack === "gas" || stack === "all" || $("c-addons").querySelector("input[value=gas]").checked;
+  $("c-tz-field").hidden = !gas;
+}
+
+/**
+ * Show the project folder and how the data folder will be stored.
+ * @param {string} prefix `c` (create) or `m` (migrate).
+ * @returns {Promise<void>} Resolves when the preview is drawn.
+ */
+async function previewData(prefix) {
+  const name = $(`${prefix}-name`).value.trim() || (prefix === "m" ? ($("m-source").value.split("/").pop() || "") : "");
+  const parent = $(`${prefix}-parent`).value.trim();
+  if (prefix === "c") $("c-target").textContent = name && parent ? `將建立：${parent}/${name}` : "";
+  if (!name || !parent) { $(`${prefix}-data-preview`).textContent = ""; return; }
+  try {
+    const p = await api("POST", "/api/data-preview", { name, parent, data_dir: $(`${prefix}-data`).value.trim() });
+    $(`${prefix}-data-preview`).textContent = `資料會放在：${p.absolute}　→ 設定值 DATA_DIR=${p.stored}（${p.where}）`;
+  } catch (err) { $(`${prefix}-data-preview`).textContent = err.message; }
+}
+
+/**
+ * Collect the checked values inside a container.
+ * @param {string} id Container id.
+ * @returns {string[]} Checked values.
+ */
+function checked(id) {
+  return [...$(id).querySelectorAll("input:checked")].map((b) => b.value);
+}
+
+/**
+ * Start a background job and follow its output.
+ * @param {string} path API path that starts the job.
+ * @param {object} body Request body.
+ * @param {string} msgId Message element of the form.
+ * @param {function(object):void} [done] Called with the finished job.
+ * @returns {Promise<void>} Resolves once the job has started (or failed to start).
+ */
+async function startJob(path, body, msgId, done) {
+  say(msgId, "");
+  try {
+    await api("POST", path, body);
+    afterJob = done || null;
+    $("job").hidden = false;
+    $("job").scrollIntoView({ behavior: "smooth", block: "start" });
+    poll();
+  } catch (err) { say(msgId, err.message, true); }
+}
+
+/**
+ * Refresh the job panel until the job ends.
+ * @returns {Promise<void>} Resolves after one refresh.
+ */
+async function poll() {
+  clearTimeout(pollTimer);
+  const job = await api("GET", "/api/job").catch(() => null);
+  if (!job) return;
+  $("job").hidden = false;
+  $("job-title").textContent = job.title;
+  const label = { running: "執行中…", done: "完成", failed: "失敗" }[job.state];
+  $("job-state").textContent = label;
+  $("job-state").className = `chip ${job.state === "done" ? "ok" : job.state === "failed" ? "bad" : "warn"}`;
+  const log = $("job-log");
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  log.textContent = job.log.join("\n") || "（開始執行…）";
+  if (atBottom) log.scrollTop = log.scrollHeight;
+  document.querySelectorAll("button.primary, #u-apply").forEach((b) => { b.disabled = job.state === "running"; });
+  if (job.state === "running") { pollTimer = setTimeout(poll, 700); return; }
+  if (afterJob) { const cb = afterJob; afterJob = null; cb(job); }
+}
+
+/**
+ * Load the overview of every tracked project and draw it.
+ * @returns {Promise<void>} Resolves when the table is drawn.
+ */
+async function loadOverview() {
+  say("p-msg", "讀取中…");
+  try {
+    OVERVIEW = await api("GET", `/api/overview?root=${encodeURIComponent($("p-root").value)}`);
+    drawProjects(OVERVIEW);
+    say("p-msg", "");
+  } catch (err) { say("p-msg", err.message, true); }
+}
+
+/**
+ * Describe a project's GitHub state.
+ * @param {object} r Project status from /api/overview.
+ * @returns {string} HTML chip.
+ */
+function githubChip(r) {
+  if (!r.upstream) return `<span class="chip warn">沒有遠端分支</span>`;
+  const parts = [];
+  if (r.ahead) parts.push(`<span class="chip warn">未推送 ${r.ahead}</span>`);
+  if (r.behind) parts.push(`<span class="chip warn">落後 ${r.behind}</span>`);
+  return parts.join(" ") || `<span class="chip ok">已同步</span>`;
+}
+
+/**
+ * Draw the overview table and the summary chips.
+ * @param {object[]} rows Projects from /api/overview.
+ * @returns {void}
+ */
+function drawProjects(rows) {
+  const live = rows.filter((r) => r.exists);
+  const updates = live.filter((r) => (UPDATES[r.path] || "").startsWith("可更新")).length;
+  $("p-summary").innerHTML = [
+    `<span class="chip">${live.length} 個專案</span>`,
+    `<span class="chip ${live.some((r) => r.dirty) ? "warn" : "ok"}">${live.filter((r) => r.dirty).length} 個有未 commit 修改</span>`,
+    `<span class="chip ${live.some((r) => r.ahead) ? "warn" : "ok"}">${live.filter((r) => r.ahead).length} 個未推送</span>`,
+    `<span class="chip ${live.some((r) => r.open_feedback) ? "warn" : "ok"}">${live.reduce((n, r) => n + (r.open_feedback || 0), 0)} 條待決定建議</span>`,
+    Object.keys(UPDATES).length ? `<span class="chip ${updates ? "warn" : "ok"}">${updates} 個可更新框架</span>` : "",
+  ].join("");
+  $("p-update-all").hidden = !updates;
+  if (!rows.length) { $("p-table").innerHTML = "<tr><td class='hint'>還沒有用母版建立的專案。</td></tr>"; return; }
+  const actions = [["status", "狀態"], ["doctor", "doctor"], ["doctor-fix", "doctor --fix"], ["check", "check"], ["setup", "安裝依賴"]];
+  $("p-table").innerHTML = "<tr><th>專案</th><th>框架</th><th>本機</th><th>GitHub</th><th>建議</th><th>AI 工具</th><th>動作</th></tr>" + rows.map((r) => {
+    if (!r.exists) {
+      return `<tr><td><strong>${esc(r.name)}</strong><br><span class="hint">${esc(r.path)}</span></td>
+        <td colspan="5"><span class="chip bad">找不到資料夾（可能已搬移或刪除）</span></td>
+        <td><button class="small" data-forget="${esc(r.path)}">從清單移除</button></td></tr>`;
+    }
+    const update = UPDATES[r.path];
+    return `<tr><td><strong>${esc(r.name)}</strong> <span class="hint">${esc([r.stack, ...(r.addons || [])].filter(Boolean).join(" + "))}</span>
+      ${r.source === "registry" ? ` <span class="chip">其他位置</span>` : ""}<br><span class="hint">${esc(r.path)}</span>
+      <br><span class="hint">${esc(r.last_commit)}</span></td>
+      <td>v${esc(r.version)}${update ? `<br><span class="chip ${update.startsWith("可更新") ? "warn" : "ok"}">${esc(update)}</span>` : ""}</td>
+      <td>${r.dirty ? `<span class="chip warn">${r.dirty} 個未 commit</span>` : `<span class="chip ok">乾淨</span>`}</td>
+      <td>${githubChip(r)}</td>
+      <td>${r.open_feedback ? `<span class="chip warn">${r.open_feedback} 條待決定</span>` : `<span class="hint">—</span>`}</td>
+      <td>${r.mcp ? `<span class="chip ok">MCP</span>` : `<span class="hint">—</span>`}</td>
+      <td><div class="row">${actions.map(([c, t]) => `<button class="small" data-cmd="${c}" data-path="${esc(r.path)}">${t}</button>`).join("")}
+        ${r.ahead && r.upstream ? `<button class="small" data-push="${esc(r.path)}" data-n="${r.ahead}">推送 ${r.ahead}</button>` : ""}
+        ${INFO.native_picker ? `<button class="small" data-reveal="${esc(r.path)}">Finder</button>` : ""}</div></td></tr>`;
+  }).join("");
+  $("p-table").querySelectorAll("[data-cmd]").forEach((b) => {
+    b.onclick = () => {
+      const writes = ["doctor-fix", "setup"].includes(b.dataset.cmd);
+      if (writes && !confirm(`在 ${b.dataset.path} 執行 agentctl ${b.dataset.cmd.replace("-", " --")}？`)) return;
+      startJob("/api/project-command", { path: b.dataset.path, command: b.dataset.cmd, confirm: writes }, "p-msg", loadOverview);
+    };
+  });
+  $("p-table").querySelectorAll("[data-push]").forEach((b) => {
+    b.onclick = () => {
+      if (!confirm(`把 ${b.dataset.n} 個 commit 推送到 GitHub？\n${b.dataset.push}`)) return;
+      startJob("/api/push", { path: b.dataset.push, confirm: true }, "p-msg", loadOverview);
+    };
+  });
+  $("p-table").querySelectorAll("[data-forget]").forEach((b) => {
+    b.onclick = async () => { await api("POST", "/api/registry/forget", { path: b.dataset.forget }); loadOverview(); };
+  });
+  $("p-table").querySelectorAll("[data-reveal]").forEach((b) => { b.onclick = () => api("POST", "/api/reveal", { path: b.dataset.reveal }); });
+}
+
+/**
+ * Remember the update preview per project and redraw the overview.
+ * @param {object[]} rows Rows from the update preview job.
+ * @returns {void}
+ */
+function rememberUpdates(rows) {
+  UPDATES = Object.fromEntries((rows || []).map((r) => [r.path, r.status]));
+  drawProjects(OVERVIEW);
+}
+
+/**
+ * Draw the update preview table.
+ * @param {object[]} rows Rows from the update preview job.
+ * @returns {void}
+ */
+function drawUpdate(rows) {
+  if (!rows || !rows.length) { $("u-table").innerHTML = "<tr><td class='hint'>沒有找到專案。</td></tr>"; $("u-apply-row").hidden = true; return; }
+  $("u-table").innerHTML = "<tr><th>專案</th><th>版本</th><th>更新</th><th>新增</th><th>衝突</th><th>母版已移除</th><th>狀態</th></tr>" + rows.map((r) => `
+    <tr><td>${esc(r.name)}</td><td>v${esc(r.current)} → v${esc(r.target)}</td><td>${r.update}</td><td>${r.add}</td><td>${r.conflict}</td>
+    <td>${r.removed}${r.removed_files.length ? `<br><span class="hint">${r.removed_files.map(esc).join("<br>")}</span>` : ""}</td><td>${esc(r.status)}</td></tr>`).join("");
+  $("u-apply-row").hidden = !rows.some((r) => r.status.startsWith("可更新"));
+}
+
+/**
+ * Wire up the buttons and load the template information.
+ * @returns {Promise<void>} Resolves when the page is ready.
+ */
+async function init() {
+  try { INFO = await api("GET", "/api/info"); } catch (err) { $("sub").textContent = `無法連到本機服務：${err.message}`; return; }
+  $("sub").textContent = `框架 v${INFO.framework_version} · 母版：${INFO.template}`;
+  for (const id of ["c-parent", "m-parent", "p-root", "f-root", "u-root"]) $(id).value = INFO.projects_root;
+  drawChoices();
+  document.querySelectorAll("[role=tab]").forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+  document.querySelectorAll("[data-pick]").forEach((b) => { b.onclick = () => pickFolder(b.dataset.pick); });
+  $("c-stack").onchange = updateAddons;
+  $("c-addons").onchange = updateAddons;
+  for (const id of ["c-name", "c-parent", "c-data"]) $(id).addEventListener("input", () => previewData("c"));
+  for (const id of ["m-name", "m-parent", "m-data", "m-source"]) $(id).addEventListener("input", () => previewData("m"));
+  $("c-data-default").onclick = () => { $("c-data").value = ""; previewData("c"); };
+
+  $("c-go").onclick = () => startJob("/api/create", {
+    name: $("c-name").value.trim(), parent: $("c-parent").value.trim(), data_dir: $("c-data").value.trim(),
+    stack: $("c-stack").value, addons: checked("c-addons"), skills: checked("c-skills"), description: $("c-desc").value.trim(),
+    timezone: $("c-tz-field").hidden ? "" : $("c-tz").value.trim(), license: $("c-mit").checked ? "MIT" : "none",
+    doctor: $("c-doctor").checked, setup: $("c-setup").checked, check: $("c-check").checked, confirm: true,
+  }, "c-msg", (job) => {
+    if (job.state === "done") say("job-msg", "✅ 專案已建立，已加入總覽。用 Claude Code / Antigravity / Cursor 打開資料夾，對 Agent 說「開工」。");
+    loadOverview();
+  });
+  $("m-go").onclick = () => startJob("/api/migrate", {
+    source: $("m-source").value.trim(), name: $("m-name").value.trim() || $("m-source").value.trim().split("/").pop(),
+    parent: $("m-parent").value.trim(), data_dir: $("m-data").value.trim(),
+    mode: document.querySelector("input[name=m-mode]:checked").value, stack: $("m-stack").value, confirm: true,
+  }, "m-msg", (job) => {
+    if (job.state === "done") say("job-msg", "✅ 已建立新專案，已加入總覽。依 docs/migration/MIGRATION.md §4.5 搬資料，再對 Agent 說「繼續遷移」。");
+    loadOverview();
+  });
+  $("p-scan").onclick = loadOverview;
+  $("p-check-updates").onclick = () => startJob("/api/update/preview", { root: $("p-root").value }, "p-msg", (job) => rememberUpdates(job.result));
+  $("p-update-all").onclick = () => {
+    if (!confirm("更新所有「可更新」的專案？專案改過的檔案不會被覆蓋（另存 *.template），有未 commit 修改的專案會略過，不會推送。")) return;
+    startJob("/api/update/apply", { root: $("p-root").value, commit: true, confirm: true }, "p-msg", async (job) => { await loadOverview(); rememberUpdates(job.result); });
+  };
+  $("p-feedback").onclick = () => { showTab("feedback"); $("f-root").value = $("p-root").value; $("f-scan").click(); };
+  $("f-scan").onclick = async () => {
+    try {
+      const data = await api("GET", `/api/feedback?root=${encodeURIComponent($("f-root").value)}&all=${$("f-all").checked ? 1 : 0}`);
+      say("f-msg", `掃描 ${data.scanned} 個專案，共 ${data.items.length} 條。決定後到各專案的檔案把狀態改成「已採用」或「不採用」。`);
+      $("f-table").innerHTML = data.items.length ? "<tr><th>日期</th><th>專案</th><th>建議</th><th>來源</th><th>狀態</th></tr>" + data.items.map((i) => `
+        <tr><td>${esc(i.date)}</td><td>${esc(i.project)}<br><span class="hint">v${esc(i.version)}</span></td><td>${esc(i.text)}<br><span class="hint">${esc(i.file)}</span></td>
+        <td>${esc(i.source)}</td><td><span class="chip">${esc(i.status)}</span></td></tr>`).join("") : "";
+    } catch (err) { say("f-msg", err.message, true); }
+  };
+  $("u-preview").onclick = () => startJob("/api/update/preview", { root: $("u-root").value }, "u-msg", (job) => drawUpdate(job.result));
+  $("u-apply").onclick = () => {
+    if (!confirm("要更新表格中「可更新」的專案嗎？（不會推送、不會覆蓋專案改過的檔案）")) return;
+    startJob("/api/update/apply", { root: $("u-root").value, commit: $("u-commit").checked, confirm: true }, "u-msg", (job) => drawUpdate(job.result));
+  };
+  loadOverview();
+  poll();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-# 01 project_template — 新專案母版（v3.1）
+# 01 project_template — 新專案母版（v3.2）
 
 執行一個指令，就為新專案建立**統一的資料夾與文件結構**、AI Agent 規則、交接與溯源紀錄、品質檢查與語言範本。適用情境：**同一時間只有一個 AI Agent 在改程式**，不同 Agent（Claude Code、Gemini/Antigravity、Cursor、Windsurf、Copilot、Codex）或不同對話輪流接手。
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | git、`python3`（macOS 內建即可） | 執行框架指令 | Xcode Command Line Tools |
 | uv | Python 專案（自動下載 Python 3.11 到專案內） | `brew install uv` |
-| nvm + Node（`.nvmrc`）＋ corepack pnpm | 網頁、GAS、手機 App | 見 `standards/ENVIRONMENT_AND_DEPENDENCIES.md` |
+| nvm + Node（`.nvmrc`）＋ corepack pnpm | 網頁、GAS、手機 App | 見 `docs/standards/ENVIRONMENT_AND_DEPENDENCIES.md` |
 | Xcode（App Store）、Android Studio | 只有手機 App 需要（iOS / Android 模擬器） | 專案內 `Brewfile` 與 `mobile/MOBILE.md` |
 
 所有套件都裝在各專案資料夾內（`.venv/`、`node_modules/`），不用全域 pip、`npm -g` 或 `sudo`。
@@ -24,7 +24,7 @@
 用母版建立或遷移的專案會記錄在母版的 `.local/projects.json`（只在這台電腦、不進 git；在母版所在資料夾內的專案存成相對路徑）。專案搬走或刪除時，總覽會標示「找不到」，可以從清單移除。
 
 ```bash
-python3 tools/web_ui.py
+python3 scripts/web_ui.py
 ```
 
 會打開 http://127.0.0.1:8766 （只綁本機；`--port` 改埠號）。「選擇…」按鈕會開啟 macOS 的資料夾選擇視窗。網頁用 FastAPI；第一次執行時會自動透過 `uv run --with fastapi,uvicorn,mcp` 建立暫存環境（在 uv 的快取，不安裝到主機）。
@@ -33,16 +33,16 @@ python3 tools/web_ui.py
 
 | 工具 | 怎麼接 |
 |---|---|
-| Claude Code、OpenCode、Antigravity CLI | 在母版資料夾內使用即可：`.mcp.json`、`opencode.json`、`.agents/mcp_config.json` 會啟動 `python3 tools/template_mcp.py`（MCP stdio）。Claude Code 第一次會問是否允許 |
-| Claude Desktop、Antigravity App、其他資料夾 | 在該工具的 MCP 設定加入 command `python3`、args `<母版資料夾>/tools/template_mcp.py` |
+| Claude Code、OpenCode、Antigravity CLI | 在母版資料夾內使用即可：`.mcp.json`、`opencode.json`、`.agents/mcp_config.json` 會啟動 `python3 scripts/template_mcp.py`（MCP stdio）。Claude Code 第一次會問是否允許 |
+| Claude Desktop、Antigravity App、其他資料夾 | 在該工具的 MCP 設定加入 command `python3`、args `<母版資料夾>/scripts/template_mcp.py`（v3.1 以前是 `tools/template_mcp.py`，請改成新路徑） |
 | Open WebUI（MCP，管理員） | 先執行網頁，再到 ⚙ 設定 → 管理員 → Integrations → External Tool Servers → MCP (Streamable HTTP)，URL `http://127.0.0.1:8766/mcp` |
-| Open WebUI（OpenAPI，一般使用者） | ⚙ 設定 → Integrations → Tools → ➕，URL `http://127.0.0.1:8766`；或貼上 `tools/openwebui/project_template_tool.py` 當工具 |
+| Open WebUI（OpenAPI，一般使用者） | ⚙ 設定 → Integrations → Tools → ➕，URL `http://127.0.0.1:8766`；或貼上 `src/project_template/entrypoints/openwebui_tool.py` 當工具 |
 
 - 之後可以直接說「幫我建立一個叫 xxx 的 Python 專案，要有網頁」「列出我的專案」「預覽框架更新」。
-- 你說要網頁時，Agent 會先依 `standards/LOCAL_AI_ENVIRONMENT.md` 的清單確認需求（誰用、哪些動作會改資料、接哪些 AI 工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請你確認後才建立。這份文件也記錄這台電腦的 AI 工具與埠號，每個新專案都會有一份。
+- 你說要網頁時，Agent 會先依 `docs/standards/LOCAL_AI_ENVIRONMENT.md` 的清單確認需求（誰用、哪些動作會改資料、接哪些 AI 工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請你確認後才建立。這份文件也記錄這台電腦的 AI 工具與埠號，每個新專案都會有一份。
 - **會修改檔案的工具（建立、遷移、doctor --fix、安裝依賴、更新框架）一定先列出要執行的指令，你同意後才會執行**（`confirm`）。
 - Open WebUI 在 Docker 時：網頁加 `--allow-host host.docker.internal`，網址改成 `http://host.docker.internal:8766`。
-- API 說明：[`tools/web/API.md`](tools/web/API.md)；互動文件：http://127.0.0.1:8766/docs 。
+- API 說明：[`src/project_template/entrypoints/web/API.md`](src/project_template/entrypoints/web/API.md)；互動文件：http://127.0.0.1:8766/docs 。
 
 ---
 
@@ -55,24 +55,24 @@ cd "$HOME/Desktop/projects/01 project_template"
 ```
 
 ```bash
-python3 init_project.py --target ~/Desktop/projects/my_app --stack python
+python3 scripts/init_project.py --target ~/Desktop/projects/my_app --stack python
 ```
 
 Python + 網頁 + GAS
 
 ```bash
-python3 init_project.py --target ~/Desktop/projects/my_app --stack python --with web gas
+python3 scripts/init_project.py --target ~/Desktop/projects/my_app --stack python --with web gas
 ```
 
 手機 App（Android + iOS）＋ Python 後端；只有 App 時用 `--stack mobile`
 
 ```bash
-python3 init_project.py --target ~/Desktop/projects/my_app --stack python --with api mobile
+python3 scripts/init_project.py --target ~/Desktop/projects/my_app --stack python --with api mobile
 ```
 
 ```bash
-python3 init_project.py --target ~/Desktop/projects/my_gas --stack gas
-python3 init_project.py --list-skills
+python3 scripts/init_project.py --target ~/Desktop/projects/my_gas --stack gas
+python3 scripts/init_project.py --list-skills
 ```
 
 | 參數 | 說明 |
@@ -111,7 +111,7 @@ python3 scripts/agentctl.py check
 ### 把舊專案搬進新結構
 
 ```bash
-python3 migrate_project.py --from ~/Desktop/projects/old_app --target ~/Desktop/projects/old_app_v2
+python3 scripts/migrate_project.py --from ~/Desktop/projects/old_app --target ~/Desktop/projects/old_app_v2
 ```
 
 - 舊專案**不會被修改**；新資料夾由舊 repo clone（保留 git 歷史），舊檔案以 `git mv` 放進 `legacy/`，再套用模板。
@@ -179,8 +179,9 @@ my_app/
 5. **資料和程式分開**：輸入、輸出、資料庫、log 都在 `.env` 的 `DATA_DIR`（預設是相對路徑 `../../projects-data/<專案>`：`projects/` 旁邊的 `projects-data/`；外接硬碟時寫絕對路徑）；pre-commit 擋下 PDF、壓縮檔、資料庫與超過 10 MB 的檔案。
 6. **Git 安全**：commit 訊息一律英文；pre-push hook 擋下未經同意的 push（`ALLOW_PUSH=1` 才放行）；`agentctl pause` 中途離開、`agentctl finish` 專案完成驗收。
 7. **AGENTS.md**：「使用者說什麼 → 執行什麼」對照表；核心規則包括出示執行證據、與 ADR 衝突要先問、錯誤與決策即時記錄、通用規則回寫模板（`docs/TEMPLATE_FEEDBACK.md`）；專案特有規則寫 `docs/standards/PROJECT_RULES.md`（模板更新不會覆蓋）。
-8. **可擴充、可升級**：Skills 分 core / stack / optional（`skills/catalog.json`）；`agentctl update --from <母版>` 依 `framework.lock` 只更新未被專案修改的檔案，衝突檔另存 `*.template`。
-   - **從 v3.0 升級**：v3.1 把框架腳本從 `scripts/` 搬到 `.agents/bin/`、hooks 搬到 `.agents/hooks/`。`update` 會把舊的 `scripts/*.py` 列為「母版已移除」（不會自動刪除）；接著執行 `python3 scripts/agentctl.py doctor --fix` 切換 hooks（`tools/update_all.py --apply` 會自動做這一步），確認後再自行刪除舊檔。
+8. **可擴充、可升級**：Skills 分 core / stack / optional（`.agents/skills/catalog.json`）；`agentctl update --from <母版>` 依 `framework.lock` 只更新未被專案修改的檔案，衝突檔另存 `*.template`。
+   - **從 v3.0 升級**：v3.1 把框架腳本從 `scripts/` 搬到 `.agents/bin/`、hooks 搬到 `.agents/hooks/`。`update` 會把舊的 `scripts/*.py` 列為「母版已移除」（不會自動刪除）；接著執行 `python3 scripts/agentctl.py doctor --fix` 切換 hooks（`scripts/update_all.py --apply` 會自動做這一步），確認後再自行刪除舊檔。
+   - **從 v3.1 升級到 v3.2**：v3.2 的母版本身改成新專案的結構（框架檔案在 `.agents/`、`docs/standards/`，母版程式在 `src/project_template/`，指令在 `scripts/`）。v3.1 專案裡的 `agentctl update` 不認得新結構，**第一次請在母版執行 `python3 scripts/update_all.py`**（它用母版自己的更新程式處理每個專案）；更新後專案內的 `agentctl update --from` 也能用。
 
 ---
 
@@ -189,7 +190,7 @@ my_app/
 1. 使用時發現「以後每個專案都要這樣」的規則，Agent 會記在該專案的 `docs/TEMPLATE_FEEDBACK.md`（每個專案各一份）。累積一些後，在母版一次列出所有專案中「待決定」的建議（只讀，不修改專案；`--all` 連已決定的也列出，`--out <檔名>` 存成檔案）：
 
 ```bash
-python3 tools/collect_feedback.py
+python3 scripts/collect_feedback.py
 ```
 
    決定後到各專案的檔案把狀態改成 `已採用` 或 `不採用`。
@@ -197,13 +198,13 @@ python3 tools/collect_feedback.py
 3. 讓既有專案拿到新版框架（被專案改過的檔案不會覆蓋，另存 `*.template`）。一次處理所有專案，先預覽：
 
 ```bash
-python3 tools/update_all.py
+python3 scripts/update_all.py
 ```
 
    確認後再更新（會再問一次）。乾淨、沒有衝突且 `check` 通過的專案會自動本機 commit；有衝突或沒通過的保留變更讓你檢查；有未 commit 修改的專案會略過。母版本身要先 commit。
 
 ```bash
-python3 tools/update_all.py --apply
+python3 scripts/update_all.py --apply
 ```
 
    只更新單一專案時，在該專案內執行（母版和專案在同一個資料夾時，用相對路徑即可）：
@@ -216,27 +217,37 @@ python3 scripts/agentctl.py update --from "../01 project_template"
 
 ## 6. 母版資料夾結構
 
+母版本身就是一個用自己產生的 Python 專案（[ADR-001](docs/adr/001-template-uses-project-layout.md)）：和第 3 節的新專案結構相同，框架檔案就放在新專案拿到它們的**同一個路徑**，安裝與更新都是路徑對路徑複製。
+
 ```text
 01 project_template/
-├── init_project.py           # 新專案產生器
-├── migrate_project.py        # 舊專案遷移（保留歷史、legacy/、MIGRATION.md、批次任務）
-├── lib/                      # → 新專案 .agents/lib/（project_config, framework_install, tree_annotations）
-├── core/scripts/             # → 新專案 .agents/bin/（框架腳本，由 agentctl 呼叫）
-├── core/hooks/               # → 新專案 .agents/hooks/（core.hooksPath）
-├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
-├── tools/                    # 只留在母版：web_ui.py + web/（FastAPI 網頁、JSON API、/mcp）、template_mcp.py（MCP stdio）、
-│                             #   template_service.py（共用動作）、openwebui/（Open WebUI 工具）、
-│                             #   collect_feedback.py（彙整改進建議）、update_all.py（一次更新所有專案）、sync_github_skills.py
-├── standards/                # → 新專案 docs/standards/
-├── packs/                    # 語言範本：python / api / db / ollama / evals / web / gas / mobile / other_packs、stack_config（project.toml、.gitignore、CI）、migration_plan、docs_templates
-├── skills/                   # → 新專案 .agents/skills/（依 catalog.json 選擇）
-│   ├── catalog.json          # 每個 skill 的分層、觸發時機、指令
-│   └── skills.lock.json      # 上游參考原始碼（釘選 commit + license；只留在母版）
-├── .skills-cache/            # 上游參考原始碼快取（git 忽略，不會複製到新專案）
-└── tests/test_framework.py   # 框架端對端測試
+├── AGENTS.md  CLAUDE.md  GEMINI.md  README.md  CHANGELOG.md  pyproject.toml  uv.lock  .env.example
+├── .agents/
+│   ├── bin/  hooks/  lib/    # 【框架】→ 新專案同一路徑（框架腳本、git hooks、共用函式庫）
+│   ├── skills/               # 【框架】→ 新專案 .agents/skills/（依 catalog.json 選擇；skills.lock.json 只留在母版）
+│   ├── project.toml          # 母版自己的設定（分層、品質門檻、指令）
+│   └── handoff/  tasks/      # 母版自己的交接看板與任務卡
+├── docs/
+│   ├── standards/            # 【框架】→ 新專案 docs/standards/（PROJECT_RULES.md 是母版自己的，不複製）
+│   └── adr/ known-issues/ specs/ architecture/   # 母版自己的決策、問題、規格、架構
+├── scripts/
+│   ├── agentctl.py           # 【框架】→ 新專案 scripts/agentctl.py（唯一入口）
+│   └── init_project.py  migrate_project.py  web_ui.py  template_mcp.py
+│       collect_feedback.py  update_all.py  sync_github_skills.py   # 母版的指令（只是啟動器）
+├── src/project_template/     # 母版自己的程式（不會複製到新專案）
+│   ├── entrypoints/          # 指令列、FastAPI 網頁 + JSON API + /mcp（web_ui、web_routes、web/）、MCP stdio、Open WebUI 工具
+│   ├── services/             # scaffold（建立）、migration（遷移）、update_all、feedback、template_service（三個入口共用）
+│   ├── packs/                # 語言範本與專案文件：python / api / db / ollama / evals / web / gas / mobile / other、stack_config、project_docs
+│   ├── adapters/             # project_registry（.local/projects.json）
+│   └── config/               # settings（路徑、環境變數）、framework（.agents/lib）、runtime（uv 暫存環境）
+├── tests/test_framework.py   # 端對端測試（含：母版結構 = 新專案結構、母版通過自己的 check）
+├── .local/                   # 建立過的專案清單（git 忽略，只在這台電腦）
+└── .skills-cache/            # 上游參考原始碼快取（git 忽略，不會複製到新專案）
 ```
 
-上游參考原始碼不再放進母版或新專案；需要時：`python3 tools/sync_github_skills.py fetch <name>`。
+上游參考原始碼不放進母版或新專案；需要時：`python3 scripts/sync_github_skills.py fetch <name>`。
+
+在母版開發時和其他專案一樣：`python3 scripts/agentctl.py status / check / commit`；母版專屬的規則在 [`docs/standards/PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
 
 ---
 
@@ -244,6 +255,12 @@ python3 scripts/agentctl.py update --from "../01 project_template"
 
 ```bash
 python3 tests/test_framework.py -v
+```
+
+母版自己的品質檢查（註解、分層、ruff、mypy strict、目錄樹）
+
+```bash
+python3 scripts/agentctl.py check
 ```
 
 需要網路的實裝測試（預設略過）：用 uv 實際安裝 Python 專案、用 pnpm 實際安裝 Expo 並打包 iOS / Android。

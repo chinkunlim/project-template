@@ -3,7 +3,7 @@
     "project-template": {
       "command": "python3",
       "args": [
-        "${CLAUDE_PROJECT_DIR:-.}/tools/template_mcp.py"
+        "${CLAUDE_PROJECT_DIR:-.}/scripts/template_mcp.py"
       ]
     }
   }

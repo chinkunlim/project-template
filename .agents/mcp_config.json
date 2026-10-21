@@ -3,7 +3,7 @@
     "project-template": {
       "command": "python3",
       "args": [
-        "tools/template_mcp.py"
+        "scripts/template_mcp.py"
       ]
     }
   }

@@ -24,11 +24,12 @@ import unittest
 from pathlib import Path
 
 TEMPLATE_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(TEMPLATE_ROOT))
-sys.path.insert(0, str(TEMPLATE_ROOT / "skills" / "code-review-guard" / "scripts"))
+sys.path.insert(0, str(TEMPLATE_ROOT / "src"))
+sys.path.insert(0, str(TEMPLATE_ROOT / ".agents" / "skills" / "code-review-guard" / "scripts"))
 
-from init_project import scaffold_project  # noqa: E402
 import review_guard  # noqa: E402
+
+from project_template.services.scaffold import scaffold_project  # noqa: E402
 
 # Deterministic git identity so commits work on any machine / CI
 GIT_ENV = {
@@ -680,7 +681,7 @@ class MigrationTest(unittest.TestCase):
         base = Path(self.tmp.name)
         self.old = make_old_project(base)
         self.new = base / "shop_v2"
-        res = run(TEMPLATE_ROOT, "migrate_project.py", "--from", str(self.old), "--target", str(self.new))
+        res = run(TEMPLATE_ROOT, "scripts/migrate_project.py", "--from", str(self.old), "--target", str(self.new))
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
 
     def tearDown(self) -> None:
@@ -713,7 +714,7 @@ class MigrationTest(unittest.TestCase):
 
     def test_plan_suggests_concrete_targets(self) -> None:
         """Real-world files get a fitting target: I/O code → adapters, known docs → their folder, data → DATA_DIR."""
-        from packs.migration_plan import PlanContext, classify
+        from project_template.packs.migration_plan import PlanContext, classify
 
         ctx = PlanContext(pkg="app")
         cases = {
@@ -842,7 +843,7 @@ class FlaskMigrationTest(unittest.TestCase):
             Tuple of the new project path and its MIGRATION.md text.
         """
         target = self.base / name
-        res = run(TEMPLATE_ROOT, "migrate_project.py", "--from", str(self.old), "--target", str(target), "--mode", mode)
+        res = run(TEMPLATE_ROOT, "scripts/migrate_project.py", "--from", str(self.old), "--target", str(target), "--mode", mode)
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         return target, (target / "docs" / "migration" / "MIGRATION.md").read_text(encoding="utf-8")
 
@@ -1034,7 +1035,7 @@ class UvIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "uvapp"
             env = {k: v for k, v in os.environ.items() if k != "TEMPLATE_SKIP_UV_LOCK"}
-            res = subprocess.run([sys.executable, str(TEMPLATE_ROOT / "init_project.py"), "--target", str(target), "--with", "web", "gas", "api", "db", "ollama", "evals"],
+            res = subprocess.run([sys.executable, str(TEMPLATE_ROOT / "scripts" / "init_project.py"), "--target", str(target), "--with", "web", "gas", "api", "db", "ollama", "evals"],
                                  capture_output=True, text=True, env=env)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertTrue((target / "uv.lock").exists())
@@ -1068,7 +1069,7 @@ def venv_version(root: Path) -> str:
 
 
 class CollectFeedbackTest(unittest.TestCase):
-    """tools/collect_feedback.py gathers open suggestions from every project without changing them."""
+    """scripts/collect_feedback.py gathers open suggestions from every project without changing them."""
 
     def test_collects_open_suggestions_read_only(self) -> None:
         """Open rows (empty or 待決定) are listed oldest first; adopted rows only with --all; files stay unchanged."""
@@ -1080,31 +1081,31 @@ class CollectFeedbackTest(unittest.TestCase):
                 feedback = base / rel / "docs" / "TEMPLATE_FEEDBACK.md"
                 feedback.write_text(feedback.read_text(encoding="utf-8") + "\n".join(rows) + "\n", encoding="utf-8")
             before = (base / "books" / "docs" / "TEMPLATE_FEEDBACK.md").read_text(encoding="utf-8")
-            out = run(TEMPLATE_ROOT, "tools/collect_feedback.py", str(base)).stdout
+            out = run(TEMPLATE_ROOT, "scripts/collect_feedback.py", str(base)).stdout
             self.assertIn("掃描 2 個專案，共 2 條", out)
             self.assertLess(out.index("離線模式"), out.index("run 指令"), "oldest first")
             self.assertNotIn("頁數", out)
-            self.assertIn("頁數 \\| 耗時", run(TEMPLATE_ROOT, "tools/collect_feedback.py", str(base), "--all").stdout)
+            self.assertIn("頁數 \\| 耗時", run(TEMPLATE_ROOT, "scripts/collect_feedback.py", str(base), "--all").stdout)
             self.assertEqual((base / "books" / "docs" / "TEMPLATE_FEEDBACK.md").read_text(encoding="utf-8"), before)
 
 
 class UpdateAllTest(unittest.TestCase):
-    """tools/update_all.py previews by default and updates only clean, conflict-free projects."""
+    """scripts/update_all.py previews by default and updates only clean, conflict-free projects."""
 
     def test_preview_then_apply(self) -> None:
         """Preview changes nothing; --apply commits clean projects, leaves conflicts uncommitted, skips dirty ones."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             tpl = base / "tpl"
-            shutil.copytree(TEMPLATE_ROOT, tpl, ignore=shutil.ignore_patterns(".git", ".skills-cache", "__pycache__"))
+            shutil.copytree(TEMPLATE_ROOT, tpl, ignore=shutil.ignore_patterns(".git", ".skills-cache", "__pycache__", ".venv", ".local"))
             git_env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
             run(tpl, "git", "init", "-q", "-b", "main")
             run(tpl, "git", "add", "-A")
             run(tpl, "git", "commit", "-qm", "template", env=git_env)
             for name in ("alpha", "beta", "gamma"):
-                res = run(tpl, "init_project.py", "--target", str(base / "projects" / name), "--stack", "generic")
+                res = run(tpl, "scripts/init_project.py", "--target", str(base / "projects" / name), "--stack", "generic")
                 self.assertEqual(res.returncode, 0, res.stderr)
-            doctor = tpl / "core" / "scripts" / "doctor.py"
+            doctor = tpl / ".agents" / "bin" / "doctor.py"
             doctor.write_text(doctor.read_text(encoding="utf-8") + "\n# template improvement\n", encoding="utf-8")
             run(tpl, "git", "commit", "-qam", "improve", env=git_env)
             beta_doctor = base / "projects" / "beta" / ".agents" / "bin" / "doctor.py"
@@ -1113,13 +1114,13 @@ class UpdateAllTest(unittest.TestCase):
             (base / "projects" / "gamma" / "notes.txt").write_text("draft\n", encoding="utf-8")
             heads = {n: run(base / "projects" / n, "git", "rev-parse", "HEAD").stdout for n in ("alpha", "beta", "gamma")}
 
-            preview = run(tpl, "tools/update_all.py", str(base / "projects"))
+            preview = run(tpl, "scripts/update_all.py", str(base / "projects"))
             self.assertEqual(preview.returncode, 0, preview.stderr)
             self.assertIn("可更新（有衝突", preview.stdout)
             self.assertIn("略過：有未 commit", preview.stdout)
             self.assertEqual(run(base / "projects" / "alpha", "git", "rev-parse", "HEAD").stdout, heads["alpha"], "preview changes nothing")
 
-            run(tpl, "tools/update_all.py", str(base / "projects"), "--apply", "--yes")
+            run(tpl, "scripts/update_all.py", str(base / "projects"), "--apply", "--yes")
             alpha = base / "projects" / "alpha"
             self.assertIn("chore(framework): update to v", run(alpha, "git", "log", "-1", "--pretty=%s").stdout)
             self.assertEqual(run(alpha, "git", "status", "--porcelain").stdout.strip(), "")
@@ -1129,19 +1130,54 @@ class UpdateAllTest(unittest.TestCase):
             self.assertEqual(run(base / "projects" / "beta", "git", "rev-parse", "HEAD").stdout, heads["beta"], "conflicts are not committed")
             self.assertEqual(run(base / "projects" / "gamma", "git", "rev-parse", "HEAD").stdout, heads["gamma"])
             (tpl / "scratch.txt").write_text("x", encoding="utf-8")
-            self.assertEqual(run(tpl, "tools/update_all.py", str(base / "projects")).returncode, 1, "dirty template is refused")
+            self.assertEqual(run(tpl, "scripts/update_all.py", str(base / "projects")).returncode, 1, "dirty template is refused")
 
+
+
+class TemplateLayoutTest(unittest.TestCase):
+    """The template is laid out like the projects it creates (it is one of them)."""
+
+    def test_template_has_the_generated_layout(self) -> None:
+        """Every top-level entry of the template exists in a generated project, and framework files share their paths."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "layout_demo"
+            scaffold_project(target, "layout_demo", stack="python", addons=["api"], extra_skills=["legacy-migration"])
+            tracked = run(TEMPLATE_ROOT, "git", "ls-files", "--cached", "--others", "--exclude-standard").stdout.split()
+            template_top = {rel.split("/", 1)[0] for rel in tracked if (TEMPLATE_ROOT / rel).exists()}
+            project_top = {rel.split("/", 1)[0] for rel in run(target, "git", "ls-files").stdout.split()}
+            project_top.add("uv.lock")  # the tests skip `uv lock` (offline); real projects have it
+            self.assertEqual(template_top - project_top, set(), "the template has folders a project does not have")
+            for rel in ("AGENTS.md", ".agents/project.toml", ".agents/handoff/LATEST.md", "docs/adr/DECISIONS.md",
+                        "docs/standards/PROJECT_RULES.md", "scripts/agentctl.py", "pyproject.toml"):
+                self.assertTrue((TEMPLATE_ROOT / rel).is_file(), rel)
+            for layer in ("entrypoints", "services", "adapters", "config"):
+                self.assertTrue((TEMPLATE_ROOT / "src" / "project_template" / layer / "__init__.py").is_file(), layer)
+            for rel in run(target, "git", "ls-files", ".agents/bin", ".agents/lib", ".agents/hooks", "docs/standards", "scripts").stdout.split():
+                if rel != "docs/standards/PROJECT_RULES.md":
+                    self.assertEqual((target / rel).read_bytes(), (TEMPLATE_ROOT / rel).read_bytes(), f"{rel} differs from the template")
+
+    def test_template_version_is_the_framework_version(self) -> None:
+        """`pyproject.toml` of the template carries the framework version every project records."""
+        sys.path.insert(0, str(TEMPLATE_ROOT / ".agents" / "lib"))
+        import project_config
+
+        pyproject = (TEMPLATE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(f'version = "{project_config.FRAMEWORK_VERSION}"', pyproject)
+
+    def test_template_passes_its_own_check(self) -> None:
+        """`agentctl check` passes in the template itself (comments, layers, secrets, tree)."""
+        res = run(TEMPLATE_ROOT, "scripts/agentctl.py", "check")
+        self.assertEqual(res.returncode, 0, res.stdout[-3000:] + res.stderr[-2000:])
 
 class TemplateServiceTest(unittest.TestCase):
-    """tools/template_service.py: the actions behind the page, the API and the MCP server."""
+    """services/template_service.py: the actions behind the page, the API and the MCP server."""
 
     @classmethod
     def setUpClass(cls) -> None:
         """Import the service module."""
-        sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
-        import importlib
+        from project_template.services import template_service
 
-        cls.ts = importlib.import_module("template_service")
+        cls.ts = template_service
 
     def test_validation(self) -> None:
         """Bad names, existing folders, python-only add-ons and foreign folders are refused before anything runs."""
@@ -1179,11 +1215,9 @@ class OverviewTest(unittest.TestCase):
 
     def test_overview_registry_and_push_guard(self) -> None:
         """Registered projects outside the folder are listed; moved ones show as missing; push needs an upstream."""
-        sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
-        import importlib
+        from project_template.adapters import project_registry as registry
+        from project_template.services import template_service as ts
 
-        ts = importlib.import_module("template_service")
-        registry = importlib.import_module("project_registry")
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             original, registry.REGISTRY = registry.REGISTRY, base / "registry.json"
@@ -1210,7 +1244,7 @@ class OverviewTest(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("TEMPLATE_UV_TESTS") and shutil.which("uv"), "set TEMPLATE_UV_TESTS=1 (needs uv + network)")
 class WebUiIntegrationTest(unittest.TestCase):
-    """The real tools/web_ui.py (FastAPI via uv) and the MCP server, as agents and Open WebUI use them."""
+    """The real scripts/web_ui.py (FastAPI via uv) and the MCP server, as agents and Open WebUI use them."""
 
     def test_page_api_and_mcp(self) -> None:
         """Guards, confirm, a create through the API, and MCP over HTTP and stdio."""
@@ -1222,7 +1256,7 @@ class WebUiIntegrationTest(unittest.TestCase):
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
         env = {k: v for k, v in os.environ.items() if k != "DATA_DIR"}
-        server = subprocess.Popen([sys.executable, str(TEMPLATE_ROOT / "tools" / "web_ui.py"), "--no-browser", "--port", str(port)],
+        server = subprocess.Popen([sys.executable, str(TEMPLATE_ROOT / "scripts" / "web_ui.py"), "--no-browser", "--port", str(port)],
                                   env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         base = f"http://127.0.0.1:{port}"
 
@@ -1274,7 +1308,7 @@ class WebUiIntegrationTest(unittest.TestCase):
                     "        print(sorted(t.name for t in (await c.list_tools()).tools))\n"
                     f"        r = await c.call_tool('list_projects', {{'folder': {str(parent)!r}}})\n"
                     "        print([p['name'] for p in r.structured_content['result']])\n"
-                    f"    async with Client(StdioServerParameters(command={sys.executable!r}, args=[{str(TEMPLATE_ROOT / 'tools' / 'template_mcp.py')!r}])) as c:\n"
+                    f"    async with Client(StdioServerParameters(command={sys.executable!r}, args=[{str(TEMPLATE_ROOT / 'scripts' / 'template_mcp.py')!r}])) as c:\n"
                     f"        r = await c.call_tool('create_project', {{'name': 'x', 'folder': {str(parent)!r}}})\n"
                     "        print(r.content[0].text.splitlines()[0])\n"
                     "asyncio.run(main())\n"
@@ -1309,8 +1343,7 @@ class DataDirOptionTest(unittest.TestCase):
 
     def test_same_drive_is_relative_other_drive_only_in_env(self) -> None:
         """A chosen folder on the same drive is stored relative; on another drive it stays out of git."""
-        sys.path.insert(0, str(TEMPLATE_ROOT))
-        import packs.stack_config as stack_config
+        import project_template.packs.stack_config as stack_config
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -1359,7 +1392,7 @@ class GuardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "docs_check"
             scaffold_project(target, "docs_check", stack="python", addons=["web", "gas"], init_git_repo=False)
-            files = [p for root in (TEMPLATE_ROOT, target) for p in root.rglob("*.md") if ".skills-cache" not in p.parts]
+            files = [p for root in (TEMPLATE_ROOT, target) for p in root.rglob("*.md") if not {".skills-cache", ".venv", "node_modules"} & set(p.parts)]
             offenders = []
             for path in files:
                 for block in __import__("re").findall(r"```(?:bash|sh|zsh)\n(.*?)```", path.read_text(encoding="utf-8"), flags=16):
@@ -1387,7 +1420,7 @@ class GuardTest(unittest.TestCase):
         problems = []
         for path in sorted(TEMPLATE_ROOT.rglob("*.py")):
             rel = path.relative_to(TEMPLATE_ROOT)
-            if rel.parts[0] in (".skills-cache", "tests") or "__pycache__" in rel.parts:
+            if rel.parts[0] in (".skills-cache", "tests", ".venv") or "__pycache__" in rel.parts:
                 continue
             problems += review_guard.python_docstring_issues(ast.parse(path.read_text(encoding="utf-8")), rel.as_posix())
         self.assertEqual(problems, [])

@@ -1,0 +1,62 @@
+[project]
+name = "project-template"
+version = "3.2.0"  # = FRAMEWORK_VERSION in .agents/lib/project_config.py
+description = "新專案母版：建立、遷移與更新使用同一套結構的專案。"
+readme = "README.md"
+requires-python = ">=3.11"
+# The command-line tools need only the standard library; the web page and the MCP server need these
+# (same pins as `src/project_template/config/runtime.py`, used when there is no .venv).
+dependencies = [
+    "fastapi==0.156.4",
+    "uvicorn==0.54.0",
+    "mcp==2.3.0",
+    "pydantic==2.14.1",
+]
+
+[project.scripts]
+project-template-init = "project_template.entrypoints.init_cli:main"
+project-template-web = "project_template.entrypoints.web_ui:main"
+project-template-mcp = "project_template.entrypoints.template_mcp:main"
+
+[dependency-groups]
+dev = ["ruff>=0.6.0", "mypy>=1.11"]  # add with `uv add --dev <package>`
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv]
+# Use uv's own downloaded Python (see .python-version), never the system / Homebrew one
+python-preference = "only-managed"
+
+[tool.ruff]
+# The template's code keeps one statement per line where it reads best (see docs/standards/PROJECT_RULES.md)
+line-length = 160
+target-version = "py311"
+src = ["src", "tests"]
+# Framework-managed files (updated by `agentctl update`) and non-Python folders are not linted here
+extend-exclude = ["scripts", ".agents", "gas", "web", "legacy", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Starter files for new projects are text templates: their lines are the generated files' lines
+"src/project_template/packs/*" = ["E501"]
+# Test fixtures are file contents written in one line
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+# `.agents/lib` is the framework library every project receives (standard library only)
+mypy_path = ["src", ".agents/lib"]
+strict = true
+
+[[tool.mypy.overrides]]
+# Framework files are checked where they are developed (the tests), not as part of the template's own code
+module = ["framework_install", "project_config"]
+follow_imports = "silent"

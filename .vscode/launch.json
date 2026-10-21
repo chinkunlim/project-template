@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "project-template: web page",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/web_ui.py",
+      "args": ["--no-browser"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "project-template: list skills",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/init_project.py",
+      "args": ["--list-skills"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
