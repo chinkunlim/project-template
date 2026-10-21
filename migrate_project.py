@@ -47,7 +47,7 @@ for _path in (TEMPLATE_ROOT, TEMPLATE_ROOT / "lib"):
 from init_project import scaffold_project  # noqa: E402
 from packs.common import slugify_package_name, write_file  # noqa: E402
 from packs.language_packs import ADDON_CHOICES, STACK_CHOICES  # noqa: E402
-from packs.stack_config import default_data_dir  # noqa: E402
+from packs.stack_config import data_dir_setting  # noqa: E402
 from packs.migration_plan import (  # noqa: E402
     BATCH_TITLES,
     PlanContext,
@@ -295,7 +295,7 @@ def write_plan(target: Path, source: dict[str, str]) -> int:
         grouped.append(("flask", []))
     batches = create_batch_tasks(target, grouped)
     legacy = target / "legacy"
-    data_dir = default_data_dir(target.name)  # relative to the new project folder
+    data_dir = source.get("data_dir") or data_dir_setting(target, target.name)[0]  # relative to the new project
     risks = find_risks(target, entries)
     if source.get("data_paths") and source["history"] == "kept":
         risks.append(f"🟡 舊的 git 歷史仍含 {len(source['data_paths'])} 個資料檔（repo 體積大、可能有著作權資料）：若要推送到 GitHub，先評估用 `git filter-repo` 清除歷史中的資料檔。")
@@ -365,7 +365,9 @@ def migrate(old: Path, target: Path, options: dict) -> int:
     scaffold_project(
         target, options.get("name") or target.name, stack=stack, addons=addons,
         extra_skills=sorted({"legacy-migration", *options.get("skills", [])}), init_git_repo=True, force=True,
+        data_dir=options.get("data_dir"),
     )
+    source["data_dir"] = data_dir_setting(target, options.get("name") or target.name, options.get("data_dir"))[0]
     if mode == "maintain":
         set_forbidden_imports(target, [])
     count = write_plan(target, source)
@@ -392,6 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skills", nargs="*", default=[], help="額外安裝的 optional skills")
     parser.add_argument("--mode", choices=["maintain", "develop"], default="maintain",
                         help="maintain：舊專案已完工，保留 Flask；develop：要繼續開發，Flask 全部改成 FastAPI")
+    parser.add_argument("--data-dir", default=None, help="資料資料夾（預設 ../../projects-data/<名稱>）")
     args = parser.parse_args(argv)
     old = Path(args.old).expanduser().resolve()
     target = Path(args.target).expanduser().resolve()
@@ -399,7 +402,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"❌ 找不到舊專案：{old}", file=sys.stderr)
         return 1
     try:
-        options = {"stack": args.stack, "addons": args.addons, "name": args.name, "skills": args.skills, "mode": args.mode}
+        options = {"stack": args.stack, "addons": args.addons, "name": args.name, "skills": args.skills, "mode": args.mode,
+                   "data_dir": Path(args.data_dir) if args.data_dir else None}
         count = migrate(old, target, options)
     except (FileExistsError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"❌ {exc}", file=sys.stderr)

@@ -81,7 +81,9 @@ def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
     Returns:
         The completed process.
     """
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+    # An inherited DATA_DIR would override each project's own .env (e.g. doctor --fix creating folders)
+    env = {k: v for k, v in os.environ.items() if k != "DATA_DIR"}
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False, env=env)
 
 
 def agentctl(project: Path, *args: str) -> subprocess.CompletedProcess:

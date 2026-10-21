@@ -23,6 +23,8 @@ Environment isolation:
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 import re
 
 from packs.common import slugify_package_name
@@ -102,6 +104,42 @@ def default_data_dir(project_name: str) -> str:
         Text such as `../../projects-data/my-app`.
     """
     return DATA_DIR_TEMPLATE.format(slug=data_slug(project_name))
+
+
+def _device(path: Path) -> int:
+    """Return the file-system device of a path, or of its nearest existing parent.
+
+    Args:
+        path: Any path (may not exist yet).
+
+    Returns:
+        The `st_dev` number.
+    """
+    for candidate in (path, *path.parents):
+        if candidate.exists():
+            return candidate.stat().st_dev
+    return -1
+
+
+def data_dir_setting(project_dir: Path, project_name: str, chosen: Path | None = None) -> tuple[str, bool]:
+    """Decide the `DATA_DIR` value to write for a project.
+
+    Args:
+        project_dir: Project root directory (absolute).
+        project_name: Project name (for the default folder name).
+        chosen: Data folder picked by the user; None for the default.
+
+    Returns:
+        Tuple of the value and whether it is safe to commit in `.env.example`. A folder on the
+        same drive becomes a path relative to the project (moves with it); a folder on another
+        drive (e.g. an external disk) stays absolute and must only go into `.env`.
+    """
+    if chosen is None:
+        return default_data_dir(project_name), True
+    chosen = chosen.expanduser().resolve()
+    if _device(chosen) == _device(project_dir):
+        return Path(os.path.relpath(chosen, project_dir)).as_posix(), True
+    return chosen.as_posix(), False
 
 
 def data_slug(project_name: str) -> str:
@@ -321,12 +359,13 @@ def build_gitignore(languages: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_env_example(project_name: str, languages: list[str]) -> str:
+def build_env_example(project_name: str, languages: list[str], data_dir: str = "") -> str:
     """Render `.env.example` (copy to `.env` and fill in real values).
 
     Args:
         project_name: Project name for the header comment.
         languages: Output of `resolve_languages()`.
+        data_dir: `DATA_DIR` value (relative to the project); empty for the default.
 
     Returns:
         `.env.example` text.
@@ -344,7 +383,7 @@ def build_env_example(project_name: str, languages: list[str]) -> str:
         "# A relative path is read from THIS project folder (not from where you run a command):",
         "# projects/<name> -> projects-data/<name>, so moving both folders together needs no change.",
         "# An absolute path also works, e.g. an external drive: /Volumes/<drive>/projects-data/<name>",
-        f"DATA_DIR={default_data_dir(project_name)}",
+        f"DATA_DIR={data_dir or default_data_dir(project_name)}",
     ]
     if "python" in languages:
         lines += ["", "# Local services: always 127.0.0.1 (not localhost / 0.0.0.0)", "OLLAMA_BASE_URL=http://127.0.0.1:11434", "OLLAMA_MODEL=qwen2.5"]

@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -1109,8 +1110,142 @@ class UpdateAllTest(unittest.TestCase):
             self.assertEqual(run(tpl, "tools/update_all.py", str(base / "projects")).returncode, 1, "dirty template is refused")
 
 
+class WebUiTest(unittest.TestCase):
+    """tools/web_ui.py: local-only API that runs the same command-line tools."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Start the web app on a free port in a background thread."""
+        sys.path.insert(0, str(TEMPLATE_ROOT / "tools"))
+        import importlib
+        import threading
+        from http.server import ThreadingHTTPServer
+
+        cls.web = importlib.import_module("web_ui")
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), cls.web.Handler)
+        cls.port = cls.server.server_address[1]
+        cls.web.Handler.allowed_hosts = {f"127.0.0.1:{cls.port}", f"localhost:{cls.port}"}
+        cls.web.Handler.allowed_origins = {f"http://127.0.0.1:{cls.port}"}
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """Stop the web app."""
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def call(self, method: str, path: str, body: dict | None = None, headers: dict | None = None) -> tuple[int, object]:
+        """Send one request to the web app.
+
+        Args:
+            method: HTTP method.
+            path: Request path.
+            body: JSON body.
+            headers: Extra headers (e.g. a foreign Host or Origin).
+
+        Returns:
+            Tuple of status code and decoded JSON.
+        """
+        import urllib.error
+        import urllib.request
+
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data, method=method,
+                                     headers={"Content-Type": "application/json", **(headers or {})})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as res:
+                return res.status, json.loads(res.read() or b"null")
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read() or b"null")
+
+    def wait_job(self) -> dict:
+        """Wait until the current job finishes.
+
+        Returns:
+            The finished job.
+        """
+        for _ in range(240):
+            _, job = self.call("GET", "/api/job")
+            if job and job["state"] != "running":
+                return job
+            time.sleep(0.5)
+        self.fail("job did not finish")
+
+    def test_local_only_guards(self) -> None:
+        """A foreign Host (DNS rebinding) and a foreign Origin on POST (CSRF) are refused."""
+        self.assertEqual(self.call("GET", "/api/info")[0], 200)
+        self.assertEqual(self.call("GET", "/api/info", headers={"Host": "evil.example"})[0], 403)
+        self.assertEqual(self.call("POST", "/api/data-preview", {}, headers={"Origin": "http://evil.example"})[0], 403)
+        self.assertEqual(self.call("POST", "/api/data-preview", {"name": "x", "parent": "/tmp"},
+                                   headers={"Origin": f"http://127.0.0.1:{self.port}"})[0], 200)
+
+    def test_create_project_from_the_page(self) -> None:
+        """Creating through the API runs init + doctor, stores DATA_DIR relative, and ignores an inherited DATA_DIR."""
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "projects"
+            parent.mkdir()
+            status, preview = self.call("POST", "/api/data-preview", {"name": "web demo", "parent": str(parent)})
+            self.assertEqual(preview["stored"], "../../projects-data/web-demo")
+            self.assertEqual(self.call("POST", "/api/create", {"name": "../evil", "parent": str(parent)})[0], 400)
+            self.assertEqual(self.call("POST", "/api/create", {"name": "x", "parent": str(parent), "stack": "node", "addons": ["api"]})[0], 400)
+            status, started = self.call("POST", "/api/create", {"name": "web demo", "parent": str(parent), "stack": "generic", "doctor": True})
+            self.assertEqual(status, 202, started)
+            job = self.wait_job()
+            self.assertEqual(job["state"], "done", "\n".join(job["log"]))
+            project = parent / "web demo"
+            self.assertIn("DATA_DIR=../../projects-data/web-demo", (project / ".env.example").read_text(encoding="utf-8"))
+            self.assertTrue((Path(tmp) / "projects-data" / "web-demo" / "input").is_dir(), "doctor used the project's .env, not the inherited DATA_DIR")
+            status, rows = self.call("GET", "/api/projects?root=" + urllib_quote(str(parent)))
+            self.assertEqual([r["name"] for r in rows], ["web demo"])
+            self.assertEqual(self.call("POST", "/api/create", {"name": "web demo", "parent": str(parent)})[0], 400, "existing folder is refused")
+
+
+def urllib_quote(text: str) -> str:
+    """Percent-encode a query value.
+
+    Args:
+        text: Value to encode.
+
+    Returns:
+        Encoded text.
+    """
+    import urllib.parse
+
+    return urllib.parse.quote(text)
+
+
+class DataDirOptionTest(unittest.TestCase):
+    """`--data-dir`: same drive -> relative in .env.example; another drive -> absolute, only in .env."""
+
+    def test_same_drive_is_relative_other_drive_only_in_env(self) -> None:
+        """A chosen folder on the same drive is stored relative; on another drive it stays out of git."""
+        sys.path.insert(0, str(TEMPLATE_ROOT))
+        import packs.stack_config as stack_config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            scaffold_project(base / "projects" / "a", "a", stack="generic", init_git_repo=False, data_dir=base / "store" / "a data")
+            self.assertIn("DATA_DIR=../../store/a data", (base / "projects" / "a" / ".env.example").read_text(encoding="utf-8"))
+            self.assertFalse((base / "projects" / "a" / ".env").exists())
+            original = stack_config._device
+            stack_config._device = lambda p: 2 if "external" in str(p) else 1
+            try:
+                value, shareable = stack_config.data_dir_setting(base / "projects" / "b", "b", base / "external" / "b")
+            finally:
+                stack_config._device = original
+            self.assertEqual((value, shareable), (str((base / "external" / "b").resolve()), False))
+
+
 class GuardTest(unittest.TestCase):
     """Comment-rule detection in code-review-guard."""
+
+    def test_sphinx_param_style_is_accepted(self) -> None:
+        """`:param name:` (Open WebUI tools) documents a parameter just like `Args:`; a missing one is still reported."""
+        tree = ast.parse('"""Tool."""\n\n\ndef f(a, b):\n    """Do it.\n\n    :param a: First.\n    :return: Nothing.\n    """\n')
+        issues = review_guard.python_docstring_issues(tree, "tool.py")
+        self.assertEqual(len(issues), 1)
+        self.assertIn("b", issues[0]["msg"])
+        self.assertNotIn("a,", issues[0]["msg"])
 
     def test_forbidden_imports(self) -> None:
         """`[project_rules] forbidden_imports` blocks `import flask` / `from flask import ...`."""

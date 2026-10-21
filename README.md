@@ -17,9 +17,35 @@
 
 ---
 
-## 1. 建立新專案
+## 1. 用網頁操作（建議）
 
-在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）。專案建議和母版放在同一個資料夾（例如 `~/Desktop/projects/`）：第 4 節的 `collect_feedback.py`、`update_all.py` 預設掃描**母版所在的資料夾**，母版搬到哪裡都跟著走（專案放別處時在指令後面加上該資料夾）。
+所有功能都有網頁版：建立專案（名稱、位置、資料資料夾、語言、附加功能、skills）、遷移舊專案、查看專案並執行 doctor / check / 安裝依賴、彙整改進建議、更新所有專案的框架。網頁執行的就是下面這些指令，並顯示完整輸出。
+
+```bash
+python3 tools/web_ui.py
+```
+
+會打開 http://127.0.0.1:8766 （只綁本機；`--port` 改埠號）。「選擇…」按鈕會開啟 macOS 的資料夾選擇視窗。
+
+**Open WebUI（Ollama）工具**：和 literature-fetch 相同的作法。
+
+1. 執行網頁（Open WebUI 在 Docker 時加上 `--allow-host host.docker.internal`）：
+
+```bash
+python3 tools/web_ui.py --allow-host host.docker.internal
+```
+
+2. Open WebUI → Workspace → Tools → 新增，貼上 `tools/openwebui/project_template_tool.py` 的內容。
+3. 工具設定（Valves）的 `base_url`：Docker 用 `http://host.docker.internal:8766`，非 Docker 用 `http://127.0.0.1:8766`；`projects_folder` 留空 = 母版所在的資料夾。
+4. 之後可以直接說「幫我建立一個叫 xxx 的 Python 專案，加上 API」「列出我的專案」「預覽框架更新」。更新框架一定要你確認後才會執行。
+
+API 說明：[`tools/web/API.md`](tools/web/API.md)。
+
+---
+
+## 2. 用指令建立新專案
+
+在母版資料夾內執行（路徑有空格，記得加引號；`--target` 換成你的新專案位置）。專案建議和母版放在同一個資料夾（例如 `~/Desktop/projects/`）：第 5 節的 `collect_feedback.py`、`update_all.py` 與網頁預設掃描**母版所在的資料夾**，母版搬到哪裡都跟著走（專案放別處時在指令後面加上該資料夾）。
 
 ```bash
 cd "$HOME/Desktop/projects/01 project_template"
@@ -55,6 +81,7 @@ python3 init_project.py --list-skills
 | `--skills` | 額外安裝 optional skills（例如 `legacy-migration`） |
 | `--force` | 允許寫入非空資料夾（預設會拒絕，避免覆蓋既有檔案；此時不會自動 commit） |
 | `--no-git` | 不建立 git repo |
+| `--data-dir` | 資料資料夾（預設 `../../projects-data/<名稱>`）；同一顆硬碟會存成相對路徑，外接硬碟的絕對路徑只寫進 `.env`（不進 git） |
 
 建立後（第一次 commit 已自動完成）：
 
@@ -100,7 +127,7 @@ python3 migrate_project.py --from ~/Desktop/projects/old_app --target ~/Desktop/
 
 ---
 
-## 2. 新專案會有什麼
+## 3. 新專案會有什麼
 
 ```text
 my_app/
@@ -131,7 +158,7 @@ my_app/
 
 ---
 
-## 3. 設計重點
+## 4. 設計重點
 
 1. **統一結構**：所有專案相同的 `docs/` 骨架與 AGENTS.md「文件放哪裡」對照表。命名規則：只有根目錄一份 `README.md`；每個 docs 資料夾用全大寫的說明/總表檔（`DECISIONS.md`、`KNOWN_ISSUES.md`、`SPECS.md`、`ARCHITECTURE.md`），新增紀錄照同資料夾的 `_TEMPLATE.md`。
 2. **交接與溯源**：
@@ -154,7 +181,7 @@ my_app/
 
 ---
 
-## 4. 維護母版
+## 5. 維護母版
 
 1. 使用時發現「以後每個專案都要這樣」的規則，Agent 會記在該專案的 `docs/TEMPLATE_FEEDBACK.md`（每個專案各一份）。累積一些後，在母版一次列出所有專案中「待決定」的建議（只讀，不修改專案；`--all` 連已決定的也列出，`--out <檔名>` 存成檔案）：
 
@@ -163,7 +190,7 @@ python3 tools/collect_feedback.py
 ```
 
    決定後到各專案的檔案把狀態改成 `已採用` 或 `不採用`。
-2. 改完母版，跑測試（見第 6 節），再 commit 母版。
+2. 改完母版，跑測試（見第 7 節），再 commit 母版。
 3. 讓既有專案拿到新版框架（被專案改過的檔案不會覆蓋，另存 `*.template`）。一次處理所有專案，先預覽：
 
 ```bash
@@ -184,7 +211,7 @@ python3 scripts/agentctl.py update --from "../01 project_template"
 
 ---
 
-## 5. 母版資料夾結構
+## 6. 母版資料夾結構
 
 ```text
 01 project_template/
@@ -194,7 +221,8 @@ python3 scripts/agentctl.py update --from "../01 project_template"
 ├── core/scripts/             # → 新專案 .agents/bin/（框架腳本，由 agentctl 呼叫）
 ├── core/hooks/               # → 新專案 .agents/hooks/（core.hooksPath）
 ├── core/entry/agentctl.py    # → 新專案 scripts/agentctl.py（唯一入口；scripts/ 其餘留給專案自己）
-├── tools/                    # 只留在母版：collect_feedback.py（彙整改進建議）、update_all.py（一次更新所有專案）、sync_github_skills.py
+├── tools/                    # 只留在母版：web_ui.py + web/（網頁與 JSON API）、openwebui/（Open WebUI 工具）、
+│                             #   collect_feedback.py（彙整改進建議）、update_all.py（一次更新所有專案）、sync_github_skills.py
 ├── standards/                # → 新專案 docs/standards/
 ├── packs/                    # 語言範本：python / api / db / ollama / evals / web / gas / mobile / other_packs、stack_config（project.toml、.gitignore、CI）、migration_plan、docs_templates
 ├── skills/                   # → 新專案 .agents/skills/（依 catalog.json 選擇）
@@ -208,7 +236,7 @@ python3 scripts/agentctl.py update --from "../01 project_template"
 
 ---
 
-## 6. 驗證框架本身
+## 7. 驗證框架本身
 
 ```bash
 python3 tests/test_framework.py -v

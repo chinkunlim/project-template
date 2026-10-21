@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,7 @@ from framework_install import (  # noqa: E402
 )
 from packs.common import slugify_package_name  # noqa: E402
 from packs.docs_templates import docs_skeleton  # noqa: E402
+from packs.stack_config import data_dir_setting  # noqa: E402
 from packs.language_packs import (  # noqa: E402
     ADDON_CHOICES,
     STACK_CHOICES,
@@ -417,7 +419,7 @@ def write_project_documents(target_dir: Path, project_name: str, settings: dict,
         target_dir: Project root directory.
         project_name: Project name.
         settings: Output of `project_settings()`.
-        extras: Dict with `description` and `skills` (installed skill names).
+        extras: Dict with `description`, `skills` (installed skill names) and optional `data_dir`.
     """
     langs = settings["languages"]
     files = {
@@ -427,7 +429,7 @@ def write_project_documents(target_dir: Path, project_name: str, settings: dict,
         "README.md": build_readme_md(project_name, extras["description"], settings),
         "CHANGELOG.md": build_changelog_md(project_name),
         ".gitignore": build_gitignore(langs),
-        ".env.example": build_env_example(project_name, langs),
+        ".env.example": build_env_example(project_name, langs, extras.get("data_dir", "")),
         ".github/workflows/ci.yml": build_ci_workflow(settings),
         **docs_skeleton(),
     }
@@ -518,6 +520,7 @@ def scaffold_project(
     license_kind: str = "none",
     init_git_repo: bool = True,
     force: bool = False,
+    data_dir: Path | None = None,
 ) -> list[str]:
     """Create a complete project in `target_dir`.
 
@@ -532,6 +535,8 @@ def scaffold_project(
         license_kind: `MIT` writes a LICENSE file; `none` (default) grants no license.
         init_git_repo: Initialise git, set `core.hooksPath` and make the first commit.
         force: Allow scaffolding into a non-empty folder (no automatic commit then).
+        data_dir: Data folder to use; None = `../../projects-data/<name>`. On the same drive it is
+            stored relative to the project; on another drive it goes only into the untracked `.env`.
 
     Returns:
         Installed skill names.
@@ -546,7 +551,12 @@ def scaffold_project(
     skills = select_skills(load_catalog(TEMPLATE_ROOT), settings["languages"], extra_skills or [])
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    write_project_documents(target_dir, project_name, settings, {"description": description, "skills": skills})
+    data_value, shareable = data_dir_setting(target_dir, project_name, data_dir)
+    extras = {"description": description, "skills": skills, "data_dir": data_value if shareable else ""}
+    write_project_documents(target_dir, project_name, settings, extras)
+    if not shareable:  # an absolute path (other drive) is personal: only in the untracked .env
+        example = (target_dir / ".env.example").read_text(encoding="utf-8")
+        _write_file(target_dir / ".env", re.sub(r"^DATA_DIR=.*$", f"DATA_DIR={data_value}", example, flags=re.M))
     installed = install_files(target_dir, framework_file_map(TEMPLATE_ROOT, skills))
     options = {"description": description, "timezone": timezone or detect_timezone(), "license": license_kind}
     generate_stack_files(target_dir, project_name, settings, options)
@@ -586,6 +596,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skills", nargs="*", default=[], help="額外安裝的 optional skills（例如 legacy-migration）")
     parser.add_argument("--list-skills", action="store_true", help="列出可用 skills 後結束")
     parser.add_argument("--no-git", action="store_true", help="不建立 git repo 與初始 commit")
+    parser.add_argument("--data-dir", default=None,
+                        help="資料資料夾（預設 ../../projects-data/<名稱>）；同一顆硬碟會存成相對路徑，外接硬碟只寫進 .env")
     parser.add_argument("--force", action="store_true", help="允許寫入非空資料夾（可能覆蓋同名檔案）")
     args = parser.parse_args(argv)
     if not args.list_skills and not args.target:
@@ -613,6 +625,7 @@ def main(argv: list[str] | None = None) -> int:
             target_dir, project_name, stack=args.stack, addons=args.addons, description=args.description,
             extra_skills=args.skills, timezone=args.timezone, license_kind=args.license,
             init_git_repo=not args.no_git, force=args.force,
+            data_dir=Path(args.data_dir) if args.data_dir else None,
         )
     except (FileExistsError, ValueError) as exc:
         print(f"❌ {exc}", file=sys.stderr)
