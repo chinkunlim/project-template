@@ -1366,6 +1366,8 @@ class WebUiIntegrationTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 parent = Path(tmp) / "projects"
                 parent.mkdir()
+                self.assertEqual(call("POST", "/api/registry/add", {"path": tmp, "confirm": True})[0], 400, "not a project")
+                self.assertEqual(call("POST", "/api/fetch", {"root": str(parent)})[0], 400, "no project with a remote")
                 body = {"name": "web made", "parent": str(parent), "stack": "generic"}
                 self.assertEqual(call("POST", "/api/create", body)[0], 428, "changes need confirm")
                 self.assertEqual(call("POST", "/api/create", {**body, "confirm": True})[0], 202)
@@ -1390,9 +1392,12 @@ class WebUiIntegrationTest(unittest.TestCase):
                 out = subprocess.run(["uv", "run", "--quiet", "--no-project", "--python", "3.11", "--with", "mcp==2.3.0", "python", "-c", client],
                                      capture_output=True, text=True, env=env, timeout=300)
                 self.assertIn("create_project", out.stdout, out.stderr)
+                self.assertIn("register_project", out.stdout)
+                self.assertIn("refresh_remote_status", out.stdout)
                 self.assertIn("['web made']", out.stdout)
                 self.assertIn("Not run yet", out.stdout, "MCP changes need confirm")
                 self.assertFalse((parent / "x").exists())
+                self.assertEqual(call("POST", "/api/registry/add", {"path": str(parent / "web made")})[0], 428, "adding needs confirm")
         finally:
             server.terminate()
             server.wait(timeout=30)

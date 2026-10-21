@@ -1,9 +1,9 @@
 """
 title: 專案母版（Project template）
 author: limchinkun
-version: 0.1.0
-description: Create projects, migrate old projects, list projects and run doctor / check on them, collect
-  template feedback and preview / apply the framework update, through the template's local web app
+version: 0.2.0
+description: Create projects, migrate old projects, add existing projects, list projects, git fetch and run
+  doctor / check on them, collect template feedback and preview / apply the framework update, through the template's local web app
   (python3 scripts/web_ui.py). Paste this file into Open WebUI → Workspace → Tools.
 """
 
@@ -104,7 +104,8 @@ class Tools:
 
     def list_projects(self) -> str:
         """
-        List the projects created from the template: name, framework version, uncommitted files and last commit.
+        List the tracked projects (the projects folder plus registered projects elsewhere): name, framework version,
+        uncommitted files and last commit.
         :return: One line per project.
         """
         rows = self._call("GET", "/api/projects?" + self._root_query())
@@ -167,6 +168,37 @@ class Tools:
                 "parent": folder or self.valves.projects_folder or info["projects_root"], "mode": mode, "confirm": True}
         result = self._call("POST", "/api/migrate", body)
         return result if isinstance(result, str) else f"Started: {result['title']}. Ask for the job status to follow it."
+
+    def register_project(self, path: str, confirm: bool = False) -> str:
+        """
+        Add an existing project folder made with the template (for example one outside the projects folder, or cloned
+        from another computer) to the template's registry, so the overview, feedback and framework update include it.
+        Folders without .agents/framework.lock and scripts/agentctl.py are refused (use migrate_project for old projects).
+        The folder itself is not changed.
+        :param path: Absolute project folder.
+        :param confirm: Must be True; first tell the user which folder will be added and call again after they agree.
+        :return: Whether it was added.
+        """
+        result = self._call("POST", "/api/registry/add", {"path": path, "confirm": confirm})
+        if isinstance(result, str):
+            if result.startswith("Error 428"):
+                return f"Not added yet. Tell the user {path} will be added to the project registry; call again with confirm=True after they agree."
+            return result
+        return f"Added {result['path']}." if result["added"] else f"{result['path']} was already registered."
+
+    def refresh_remote_status(self, project: str = "") -> str:
+        """
+        Run git fetch in one project or every tracked project with a git remote, so the unpushed / behind counts in the
+        overview are current. Only remote-tracking refs change (no files, no commits, no push).
+        :param project: Absolute project folder; empty = every tracked project.
+        :return: The job output.
+        """
+        body = {"path": project, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
+        started = self._call("POST", "/api/fetch", body)
+        if isinstance(started, str):
+            return started
+        self._wait(120)
+        return self.get_job_status()
 
     def get_job_status(self) -> str:
         """
