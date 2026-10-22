@@ -82,6 +82,7 @@ project_template/
 │   ├── adr/                                # [架構決策庫] 一決定一檔案
 │   │   ├── 001-template-uses-project-layout.md
 │   │   ├── 002-tracked-projects.md
+│   │   ├── 003-module-logger-required.md
 │   │   ├── _TEMPLATE.md                    # ADR 範本 (tracker_cli 會套用)
 │   │   └── DECISIONS.md                    # 架構決策總表
 │   ├── architecture/                       # [系統架構與資料模型]

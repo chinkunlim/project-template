@@ -37,7 +37,7 @@
 9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。
 10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push，收工（closeout）例外：使用者已同意收工時推送（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
 11. **通用規則回寫母版**：使用者提出「以後每個專案都要這樣」的規則時，寫進 [`docs/TEMPLATE_FEEDBACK.md`](docs/TEMPLATE_FEEDBACK.md)，由使用者決定是否更新專案模板；只適用本專案的規則寫進 [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
-12. **Log 追蹤**：執行的開始與結束、外部呼叫、跳過與重試、例外都要記 log，不記秘密與個資。Python 每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`，log 檔在 `DATA_DIR/logs/`，用 run id 追蹤一次執行（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
+12. **Log 追蹤**：每個有函式的程式檔都要在開頭建立模組 logger（`code-review-guard` 的 `[Logging]` 會擋，設定在 `[quality] require_logger`）；執行的開始與結束、外部呼叫、跳過與重試、例外都要記 log，不記秘密與個資。Python 每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`，log 檔在 `DATA_DIR/logs/`，用 run id 追蹤一次執行（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
 13. **網頁一定要能給 AI 工具用**：使用者要網頁、API，或要讓 Open WebUI / Ollama / 其他 Agent 使用時，先依 [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 的清單確認需求（誰用、哪些動作會改資料、接哪些工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請使用者確認；再一律用 FastAPI（`--with api`），不要做單純的網頁。同一組 `services` 由三個入口呼叫：HTTP 路由（OpenAPI 給 Open WebUI）、MCP 工具（`entrypoints/mcp_server.py`，給 Claude Code、Antigravity、OpenCode、Cursor、Open WebUI）與網頁。新增功能時三個入口一起接；會修改或刪除資料的 MCP 工具要有 `confirm` 參數。
 <!-- RULES_END -->
 
