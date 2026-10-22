@@ -15,6 +15,8 @@ The template's version is the framework version that projects record in `.agents
   (Python `logging.getLogger(__name__)`, JS/TS `createLogger(...)`, Go `slog`, Rust `log`).
   Configured with `[quality] require_logger` and `logger_exempt_layers`; on by default in new
   projects, off when the key is missing (existing projects opt in).
+  The template turns it on for itself (`config/runtime.py`, `entrypoints/web_routes.py` and
+  `entrypoints/openwebui_tool.py` now log too).
 - Every stack's starter code logs: Node `src/config/logger.js` (run id, `DATA_DIR/logs/app.log` and
   `errors.log`, `src/entrypoints/cli.js`), Go `internal/config/logging.go` (log/slog, files in
   `DATA_DIR/logs`), Rust `src/logging.rs` + `src/main.rs` (log crate), web `web/logger.js`, GAS

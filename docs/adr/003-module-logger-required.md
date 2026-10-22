@@ -34,5 +34,5 @@
 
 - 框架版本升到 3.4.0。`agentctl update` 會更新 review_guard 與 project_config，但不會改專案的 `project.toml`：舊專案要自己加 `require_logger = true` 才會開始檢查（建議先跑一次 review_guard 看缺哪些檔）。
 - Rust 專案多了 `log = { version = "0.4", features = ["std"] }` 依賴（第一次 `cargo build` 需要網路）。
-- 母版自己的 `.agents/project.toml` 等 `config/`、`entrypoints/` 的 log 補齊後才開啟（見 CHANGELOG 與交接）。
+- 母版自己的 `.agents/project.toml` 也開啟 `require_logger = true`（`packs/` 與 `config/`、`entrypoints/` 都已建立模組 logger）。
 - 測試：`LoggerRuleTest`（每種 stack 產生的專案在規則開啟下通過 `agentctl check`；Python services 檔缺 logger 時為 CRITICAL；`scripts/init_project.py` 會把帶 run id 的 log 寫進 `<DATA_DIR>/logs/app.log`）。

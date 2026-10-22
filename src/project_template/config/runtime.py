@@ -8,11 +8,13 @@ Purpose:
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import sys
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 REQUIREMENTS = ("fastapi==0.156.4", "uvicorn==0.54.0", "mcp==2.3.0", "pydantic==2.14.1")
 REEXEC_FLAG = "TEMPLATE_TOOLS_REEXEC"
 
@@ -31,11 +33,14 @@ def ensure_dependencies(script: Path) -> None:
     except ImportError:
         pass
     if os.environ.get(REEXEC_FLAG) == "1":
+        logger.error("fastapi / mcp still missing inside the uv environment")
         sys.exit("❌ 無法載入 fastapi / mcp：uv 暫存環境建立失敗（檢查網路後再試）")
     uv = shutil.which("uv")
     if not uv:
+        logger.error("uv not found; cannot start %s", script.name)
         sys.exit("❌ 需要 uv（brew install uv）：網頁與 MCP 在 uv 管理的暫存環境執行，不安裝到主機")
     os.environ[REEXEC_FLAG] = "1"
+    logger.info("re-running %s inside a uv environment with %s", script.name, ", ".join(REQUIREMENTS))
     argv = [uv, "run", "--quiet", "--no-project", "--python", "3.11"]
     for requirement in REQUIREMENTS:
         argv += ["--with", requirement]

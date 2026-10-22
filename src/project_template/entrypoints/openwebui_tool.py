@@ -18,6 +18,7 @@ description: Create projects, migrate old projects, add existing projects, list 
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.error
 import urllib.parse
@@ -25,6 +26,8 @@ import urllib.request
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class Tools:
@@ -64,6 +67,7 @@ class Tools:
             method=method,
             headers={"Content-Type": "application/json"} if data else {},
         )
+        logger.info("template app call %s %s", method, path)
         try:
             with urllib.request.urlopen(request, timeout=120) as resp:
                 return json.loads(resp.read().decode("utf-8"))
@@ -73,8 +77,10 @@ class Tools:
                 detail = json.loads(detail).get("detail", detail)
             except ValueError:
                 pass
+            logger.warning("template app %s %s -> HTTP %s", method, path, exc.code)
             return f"Error {exc.code}: {str(detail)[:300]}"
         except OSError as exc:
+            logger.warning("template app unreachable at %s: %s", self.valves.base_url, exc)
             return f"Cannot reach the template app at {self.valves.base_url} ({exc}). Is `python3 scripts/web_ui.py` running?"
 
     def _root_query(self) -> str:

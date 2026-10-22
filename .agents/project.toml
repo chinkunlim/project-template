@@ -34,9 +34,8 @@ hard_max_file_lines = 800      # hard limit per file -> CRITICAL (split into sub
 max_commit_file_mb = 10        # pre-commit blocks larger files; data belongs in DATA_DIR
 block_data_files = true        # block PDF/EPUB/archives/media/DB files; set false for document projects
 print_allowed_layers = ["entrypoints"]  # other layers must log with `logging.getLogger(__name__)`, not print
-# Module logger in every layered file with functions (ADR-003). Off here until config/runtime.py,
-# entrypoints/openwebui_tool.py and entrypoints/web_routes.py create a module logger; then set true.
-require_logger = false
+# Every layered source file that defines functions must create a module logger (ADR-003)
+require_logger = true
 logger_exempt_layers = []
 
 [commands]

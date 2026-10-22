@@ -1654,6 +1654,12 @@ class LoggerRuleTest(unittest.TestCase):
         toml.write_text(toml.read_text(encoding="utf-8").replace("logger_exempt_layers = []", 'logger_exempt_layers = ["services"]'), encoding="utf-8")
         self.assertEqual(run(root, ".agents/skills/code-review-guard/scripts/review_guard.py").returncode, 0, "exempt layers are skipped")
 
+    def test_template_enforces_the_rule_on_itself(self) -> None:
+        """The template's own project.toml turns the rule on, and its own code passes it."""
+        self.assertIn("require_logger = true", (TEMPLATE_ROOT / ".agents" / "project.toml").read_text(encoding="utf-8"))
+        res = run(TEMPLATE_ROOT, ".agents/skills/code-review-guard/scripts/review_guard.py", "--quiet")
+        self.assertEqual(res.returncode, 0, res.stdout)
+
     def test_messages_per_language_and_opt_in(self) -> None:
         """Each language gets its own fix in the message; data-only and test files pass; the rule is off when unset."""
         config = {"architecture": {"env_access_layers": ["config"]}, "quality": {"require_docstrings": False, "require_logger": True}}

@@ -8,6 +8,7 @@ Purpose:
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -22,6 +23,7 @@ from project_template.adapters import project_registry
 from project_template.config.settings import WEB_PAGE
 from project_template.services import template_service as ts
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -128,6 +130,7 @@ def need_confirm(confirm: bool, what: str) -> None:
         PermissionError: When `confirm` is false.
     """
     if not confirm:
+        logger.warning("refused without confirm: %s", what)
         raise PermissionError(f"{what} 會修改檔案：先讓使用者確認，再用 confirm=true 呼叫")
 
 
@@ -146,6 +149,7 @@ def started(title: str, steps: list[Any], after: ts.AfterJob | None = None, keep
     import shlex
 
     job = ts.RUNNER.start(title, steps, after=after, keep_going=keep_going)
+    logger.info("job started id=%s title=%s steps=%d", job.id, job.title, len(steps))
     return {"id": job.id, "title": job.title, "commands": [shlex.join(a) for a, _ in steps]}
 
 
