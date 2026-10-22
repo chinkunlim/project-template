@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Starter packs for Node.js, Go, Rust and language-agnostic (generic) projects.
+"""Starter packs for Node.js and language-agnostic (generic) projects (Go: `go_pack.py`, Rust: `rust_pack.py`).
 
 Purpose:
     Small, fully commented starters that follow the layer rules
@@ -8,37 +8,128 @@ Purpose:
 
 from __future__ import annotations
 
-import json
+import logging
 import re
 from pathlib import Path
 
 from project_template.packs.common import package_json, write_package_json
 from project_template.packs.common import write_file as _write
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Node.js
 # ---------------------------------------------------------------------------
 
 NODE_FILES = {
-    "src/config/index.js": '''/**
+    "src/config/index.js": """/**
  * @file Configuration layer: the ONLY module allowed to read process.env.
+ * The project's `.env` is loaded when present; variables already set win.
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("config");
+export const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 /**
  * Read application settings from environment variables.
  * @param {Record<string, string|undefined>} [env=process.env] Environment variables to read.
- * @returns {{appEnv: string, logLevel: string}} Frozen settings object.
+ * @returns {{appEnv: string, logLevel: string, logToFile: boolean, dataDir: string}} Frozen settings object.
  */
 export function loadConfig(env = process.env) {
-  return Object.freeze({
+  const envFile = path.join(PROJECT_ROOT, ".env");
+  if (env === process.env && existsSync(envFile) && typeof process.loadEnvFile === "function") {
+    process.loadEnvFile(envFile);
+  }
+  const dataDir = (env.DATA_DIR || "").trim();
+  const config = Object.freeze({
     appEnv: (env.APP_ENV || "development").trim(),
-    logLevel: (env.LOG_LEVEL || "INFO").trim(),
+    logLevel: (env.LOG_LEVEL || "INFO").trim().toUpperCase(),
+    logToFile: /^(1|true|yes|on)$/i.test((env.LOG_TO_FILE || "true").trim()),
+    dataDir: dataDir ? path.resolve(PROJECT_ROOT, dataDir) : "",
+  });
+  logger.debug(`config loaded env=${config.appEnv} dataDir=${config.dataDir}`);
+  return config;
+}
+""",
+    "src/config/logger.js": """/**
+ * @file Logging shared by every module, built for tracing one run.
+ *
+ * Every line looks like
+ *   2026-10-20T09:15:02.481Z INFO    [3f9a1c2e] services/greeting - greeting user=Ann
+ * Console output goes to stderr (stdout stays for the program's real output). After
+ * `setupLogging(config)` with `logToFile`, lines are also appended to `<DATA_DIR>/logs/app.log`
+ * and WARNING and above to `errors.log` (outside the project). Uncaught errors are logged too.
+ * Each module creates its own logger: `const logger = createLogger("services/greeting");`
+ */
+import { appendFileSync, mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+
+const LEVELS = Object.freeze({ DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40, CRITICAL: 50 });
+const state = { runId: "-", level: LEVELS.INFO, logDir: "" };
+
+/**
+ * Write one log line to stderr and, when configured, to the log files.
+ * @param {string} level Level name, e.g. "INFO".
+ * @param {string} name Logger (module) name.
+ * @param {string} message Message text (never secrets or personal data).
+ * @returns {void}
+ */
+function write(level, name, message) {
+  if (LEVELS[level] < state.level) {
+    return;
+  }
+  const line = `${new Date().toISOString()} ${level.padEnd(7)} [${state.runId}] ${name} - ${message}`;
+  console.error(line);
+  if (state.logDir) {
+    appendFileSync(path.join(state.logDir, "app.log"), line + "\\n");
+    if (LEVELS[level] >= LEVELS.WARNING) {
+      appendFileSync(path.join(state.logDir, "errors.log"), line + "\\n");
+    }
+  }
+}
+
+/**
+ * Create a module logger.
+ * @param {string} name Module name shown on every line, e.g. "services/greeting".
+ * @returns {{debug: Function, info: Function, warn: Function, error: Function}} Frozen logger.
+ */
+export function createLogger(name) {
+  return Object.freeze({
+    debug: (message) => write("DEBUG", name, message),
+    info: (message) => write("INFO", name, message),
+    warn: (message) => write("WARNING", name, message),
+    error: (message) => write("ERROR", name, message),
   });
 }
-''',
-    "src/domain/greeting.js": '''/**
+
+/**
+ * Configure logging once per process and start a new run id.
+ * @param {{logLevel: string, logToFile: boolean, dataDir: string}} config Settings from loadConfig().
+ * @returns {string} The run id written on every line of this run.
+ */
+export function setupLogging(config) {
+  state.runId = randomUUID().slice(0, 8);
+  state.level = LEVELS[config.logLevel] ?? LEVELS.INFO;
+  state.logDir = config.logToFile && config.dataDir ? path.join(config.dataDir, "logs") : "";
+  if (state.logDir) {
+    mkdirSync(state.logDir, { recursive: true });
+  }
+  process.on("uncaughtExceptionMonitor", (err) => write("CRITICAL", "uncaught", err.stack || String(err)));
+  write("INFO", "logger", `run started pid=${process.pid} node=${process.version} logDir=${state.logDir}`);
+  return state.runId;
+}
+""",
+    "src/domain/greeting.js": """/**
  * @file Domain layer: pure value objects with no I/O.
  */
+import { createLogger } from "../config/logger.js";
+
+const logger = createLogger("domain/greeting");
 
 /**
  * Create an immutable greeting value object.
@@ -48,13 +139,17 @@ export function loadConfig(env = process.env) {
  */
 export function makeGreeting(userName, environment) {
   const clean = String(userName || "").trim() || "World";
+  logger.debug(`greeting built for ${clean.length} characters`);
   return Object.freeze({ message: `Hello, ${clean}!`, environment });
 }
-''',
-    "src/services/greetingService.js": '''/**
+""",
+    "src/services/greetingService.js": """/**
  * @file Services layer: business logic using config values and domain objects.
  */
+import { createLogger } from "../config/logger.js";
 import { makeGreeting } from "../domain/greeting.js";
+
+const logger = createLogger("services/greetingService");
 
 /**
  * Greet a user in the configured environment.
@@ -63,9 +158,39 @@ import { makeGreeting } from "../domain/greeting.js";
  * @returns {{message: string, environment: string}} The greeting.
  */
 export function greetUser(userName, config) {
+  logger.info(`greeting env=${config.appEnv}`);
   return makeGreeting(userName, config.appEnv);
 }
-''',
+""",
+    "src/entrypoints/cli.js": """/**
+ * @file Command-line entrypoint: `node src/entrypoints/cli.js Alice`.
+ * Loads config, starts logging (run id, files in DATA_DIR/logs) and prints the greeting.
+ */
+import { pathToFileURL } from "node:url";
+import { loadConfig } from "../config/index.js";
+import { createLogger, setupLogging } from "../config/logger.js";
+import { greetUser } from "../services/greetingService.js";
+
+const logger = createLogger("entrypoints/cli");
+
+/**
+ * Run the CLI.
+ * @param {string[]} [argv=process.argv.slice(2)] Command-line arguments (first one is the name).
+ * @returns {number} Exit code.
+ */
+export function main(argv = process.argv.slice(2)) {
+  const config = loadConfig();
+  setupLogging(config);
+  logger.info(`cli start args=${argv.length}`);
+  console.log(greetUser(argv[0] || "World", config).message);
+  logger.info("cli done exit=0");
+  return 0;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+  process.exitCode = main();
+}
+""",
     "test/greeting.test.js": '''/**
  * @file Unit tests for the starter greeting service (node --test).
  */
@@ -92,216 +217,11 @@ def scaffold_node_pack(target_dir: Path, project_name: str, description: str, pn
         description: One-line description.
         pnpm: pnpm version for the `packageManager` field (empty to omit).
     """
+    logger.debug("scaffold node_pack in %s", target_dir)
     slug = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"
-    write_package_json(target_dir, package_json(slug, description, {}, {"module_type": "module", "pnpm": pnpm}))
+    scripts = {"start": "node src/entrypoints/cli.js"}
+    write_package_json(target_dir, package_json(slug, description, scripts, {"module_type": "module", "pnpm": pnpm}))
     for rel, content in NODE_FILES.items():
-        _write(target_dir / rel, content)
-
-
-# ---------------------------------------------------------------------------
-# Go
-# ---------------------------------------------------------------------------
-
-
-# Go starter files: `str.format(mod=<module path>)` templates (`{{` / `}}` are literal braces).
-GO_CONFIG = '''// Package config is the only package allowed to read environment variables.
-package config
-
-import "os"
-
-// AppConfig holds immutable application settings.
-type AppConfig struct {{
-	AppEnv string // deployment environment, e.g. "development"
-}}
-
-// LoadConfig reads settings from environment variables.
-// Returns an AppConfig with defaults for missing values.
-func LoadConfig() AppConfig {{
-	env := os.Getenv("APP_ENV")
-	if env == "" {{
-		env = "development"
-	}}
-	return AppConfig{{AppEnv: env}}
-}}
-'''
-
-GO_DOMAIN = '''// Package domain contains pure value objects with no I/O.
-package domain
-
-import "strings"
-
-// Greeting is the result of greeting a user.
-type Greeting struct {{
-	Message     string
-	Environment string
-}}
-
-// NewGreeting builds a greeting.
-// Parameters: name is the user name (blank falls back to "World"); env is the environment name.
-func NewGreeting(name string, env string) Greeting {{
-	clean := strings.TrimSpace(name)
-	if clean == "" {{
-		clean = "World"
-	}}
-	return Greeting{{Message: "Hello, " + clean + "!", Environment: env}}
-}}
-'''
-
-GO_SERVICES = '''// Package services holds business logic built on config and domain.
-package services
-
-import (
-	"{mod}/internal/config"
-	"{mod}/internal/domain"
-)
-
-// Greet greets a user in the configured environment.
-// Parameters: name is the user to greet; cfg provides the environment.
-func Greet(name string, cfg config.AppConfig) domain.Greeting {{
-	return domain.NewGreeting(name, cfg.AppEnv)
-}}
-'''
-
-GO_SERVICES_TEST = '''package services
-
-import (
-	"testing"
-
-	"{mod}/internal/config"
-)
-
-// TestGreet checks the greeting text for a normal name.
-func TestGreet(t *testing.T) {{
-	res := Greet("Gopher", config.AppConfig{{AppEnv: "test"}})
-	if res.Message != "Hello, Gopher!" {{
-		t.Fatalf("unexpected message: %s", res.Message)
-	}}
-}}
-'''
-
-GO_MAIN = '''// Command app is the CLI entrypoint.
-package main
-
-import (
-	"fmt"
-
-	"{mod}/internal/config"
-	"{mod}/internal/services"
-)
-
-// main loads configuration and prints a greeting.
-func main() {{
-	res := services.Greet("World", config.LoadConfig())
-	fmt.Println(res.Message)
-}}
-'''
-
-
-def scaffold_go_pack(target_dir: Path, project_name: str) -> None:
-    """Create the Go starter (`go.mod`, `internal/{config,domain,services}`, `cmd/app`).
-
-    Args:
-        target_dir: Project root directory.
-        project_name: Project name (used for the module path).
-    """
-    mod = "example.com/" + (re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app")
-    files = {
-        "VERSION": "0.1.0\n",
-        "go.mod": f"module {mod}\n\ngo 1.21\n",
-        "internal/config/config.go": GO_CONFIG,
-        "internal/domain/greeting.go": GO_DOMAIN,
-        "internal/services/greeter.go": GO_SERVICES,
-        "internal/services/greeter_test.go": GO_SERVICES_TEST,
-        "cmd/app/main.go": GO_MAIN,
-    }
-    for rel, template in files.items():
-        _write(target_dir / rel, template.format(mod=mod))
-
-
-# ---------------------------------------------------------------------------
-# Rust
-# ---------------------------------------------------------------------------
-
-
-def scaffold_rust_pack(target_dir: Path, project_name: str, description: str) -> None:
-    """Create the Rust crate starter (`Cargo.toml`, `src/{lib,config,domain,services}.rs`).
-
-    Args:
-        target_dir: Project root directory.
-        project_name: Project name (used for the crate name).
-        description: One-line description for `Cargo.toml`.
-    """
-    crate = re.sub(r"[^a-z0-9_-]+", "_", project_name.lower()).strip("_") or "app"
-    files = {
-        "Cargo.toml": f'[package]\nname = {json.dumps(crate)}\nversion = "0.1.0"\nedition = "2021"\n'
-        f"description = {json.dumps(description, ensure_ascii=False)}\n\n[dependencies]\n",
-        "src/config.rs": '''//! Configuration layer: the only module allowed to read environment variables.
-use std::env;
-
-/// Immutable application settings.
-#[derive(Debug, Clone)]
-pub struct AppConfig {
-    /// Deployment environment, e.g. "development".
-    pub app_env: String,
-}
-
-/// Read settings from environment variables, using defaults for missing values.
-pub fn load_config() -> AppConfig {
-    let app_env = env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
-    AppConfig { app_env }
-}
-''',
-        "src/domain.rs": '''//! Domain layer: pure value objects with no I/O.
-
-/// The result of greeting a user.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Greeting {
-    pub message: String,
-    pub environment: String,
-}
-
-/// Build a greeting.
-/// * `name` - user name; blank falls back to "World".
-/// * `env` - environment the greeting is produced in.
-pub fn build_greeting(name: &str, env: &str) -> Greeting {
-    let clean = name.trim();
-    let target = if clean.is_empty() { "World" } else { clean };
-    Greeting { message: format!("Hello, {}!", target), environment: env.to_string() }
-}
-''',
-        "src/services.rs": '''//! Services layer: business logic built on config and domain.
-use crate::config::AppConfig;
-use crate::domain::{build_greeting, Greeting};
-
-/// Greet a user in the configured environment.
-/// * `name` - user to greet.
-/// * `cfg` - settings providing the environment.
-pub fn greet_user(name: &str, cfg: &AppConfig) -> Greeting {
-    build_greeting(name, &cfg.app_env)
-}
-''',
-        "src/lib.rs": '''//! Crate root: declares the layer modules and their tests.
-pub mod config;
-pub mod domain;
-pub mod services;
-
-#[cfg(test)]
-mod tests {
-    use super::config::AppConfig;
-    use super::services::greet_user;
-
-    /// A normal name is greeted and the environment is passed through.
-    #[test]
-    fn test_greet_user() {
-        let cfg = AppConfig { app_env: "test".to_string() };
-        let res = greet_user("Ferris", &cfg);
-        assert_eq!(res.message, "Hello, Ferris!");
-        assert_eq!(res.environment, "test");
-    }
-}
-''',
-    }
-    for rel, content in files.items():
         _write(target_dir / rel, content)
 
 
@@ -312,9 +232,11 @@ def scaffold_generic_pack(target_dir: Path, project_name: str) -> None:
         target_dir: Project root directory.
         project_name: Project name for the placeholder READMEs.
     """
+    logger.debug("scaffold generic_pack in %s", target_dir)
     _write(target_dir / "VERSION", "0.1.0\n")
     for layer in ("config", "domain", "services", "adapters"):
         _write(
             target_dir / "src" / layer / "LAYER.md",
-            f"# `{layer}` layer ({project_name})\n\nPut `{layer}` modules here, or change `[architecture]` in `.agents/project.toml`.\n",
+            f"# `{layer}` layer ({project_name})\n\nPut `{layer}` modules here, or change `[architecture]` in `.agents/project.toml`.\n"
+            "Every program file that defines functions creates a module logger (docs/standards/CODING_PRINCIPLES.md §0.4).\n",
         )

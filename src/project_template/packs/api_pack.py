@@ -18,10 +18,13 @@ Purpose:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from project_template.packs.common import write_file as _write
 from project_template.packs.integrations_pack import scaffold_integrations
+
+logger = logging.getLogger(__name__)
 
 API_DEPENDENCIES = ["fastapi>=0.115", "mcp>=2.3", "pydantic>=2.7", "starlette>=0.40", "uvicorn>=0.30"]
 API_DEV_DEPENDENCIES = ["httpx>=0.27"]
@@ -67,6 +70,8 @@ The same features are exposed three ways from one services layer: this JSON API 
 from __future__ import annotations
 
 {imports}
+
+logger = logging.getLogger(__name__)
 {web_const}
 
 def operation_id(route: APIRoute) -> str:
@@ -102,7 +107,8 @@ def create_app(config: AppConfig{factory_param}) -> FastAPI:
     add_local_only_guard(app, config)
     app.include_router(build_greeting_router(config{factory_arg}))
 {history_include}    app.router.routes.extend(mcp_http_routes(mcp, config))  # before the static catch-all below
-{web_mount}    return app
+{web_mount}    logger.info("app created env=%s", config.app_env)
+    return app
 
 
 def build_greeting_router(config: AppConfig{factory_param_required}) -> APIRouter:
@@ -302,11 +308,13 @@ without it (least privilege: a person approves writes).
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 {imports}
 
+logger = logging.getLogger(__name__)
 INSTRUCTIONS = (
     "Tools of the {name} project. Read-only tools can be called freely; tools with a `confirm` "
     "argument change data and need the user's approval first."
@@ -334,6 +342,7 @@ def build_mcp_server(config: AppConfig{factory_param}) -> MCPServer[Any]:
         Returns:
             The greeting text.
         """
+        logger.info("mcp tool greet")
         return create_greeting(GreetingRequest(user_name=user_name), config).message
 {db_tool}
     return server
@@ -387,6 +396,7 @@ def main() -> None:
     """Run the MCP server over stdio (`uv run {dist}-mcp`); logs go to stderr / DATA_DIR, never stdout."""
     config = load_config()
     setup_logging(config.log_level, config.logs_dir if config.log_to_file else None)
+    logger.info("mcp stdio server starting env=%s", config.app_env)
     build_mcp_server(config{factory_main}).run("stdio")
 
 
@@ -410,17 +420,22 @@ SERVER_PY = '''"""HTTP server entrypoint: `uv run {dist}-server` (listens on 127
 
 from __future__ import annotations
 
+import logging
+
 import uvicorn
 
 from {pkg}.config.logging_setup import setup_logging
 from {pkg}.config.settings import load_config
 from {pkg}.entrypoints.http.app import create_app
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
     """Start uvicorn on `HTTP_HOST` / `HTTP_PORT` from `.env` (default 127.0.0.1:8000)."""
     config = load_config()
     setup_logging(config.log_level, config.logs_dir if config.log_to_file else None)
+    logger.info("server starting http://%s:%s", config.http_host, config.http_port)
     # log_config=None: uvicorn's own messages go through our handlers and format (run id, files)
     uvicorn.run(create_app(config), host=config.http_host, port=config.http_port, log_config=None)
 
@@ -606,7 +621,7 @@ def build_app_module(pkg: str, name: str, with_db: bool, with_web: bool) -> str:
         name=name,
         extra_doc=(", database-backed history" if with_db else "") + (" and the static `web/` front end" if with_web else ""),
         test_doc="\nand an in-memory database session factory" if with_db else "",
-        imports=import_block(["from pathlib import Path"] if with_web else [], third, first),
+        imports=import_block(["import logging", *(["from pathlib import Path"] if with_web else [])], third, first),
         web_const='\nWEB_DIR = Path(__file__).resolve().parents[4] / "web"\n' if with_web else "",
         factory_param=", session_factory: sessionmaker[Session] | None = None" if with_db else "",
         factory_doc="\n        session_factory: Database session factory; created from `config.database_url` when omitted." if with_db else "",
@@ -731,6 +746,7 @@ def scaffold_api_pack(target_dir: Path, pkg: str, names: dict[str, str], addons:
         names: `project` (display name) and `dist` (distribution / command name).
         addons: Project add-ons (`db` and `web` change the generated app).
     """
+    logger.debug("scaffold api_pack in %s", target_dir)
     http = target_dir / "src" / pkg / "entrypoints" / "http"
     _write(http / "__init__.py", '"""HTTP entrypoints (FastAPI)."""\n')
     _write(http / "schemas.py", SCHEMAS_PY)

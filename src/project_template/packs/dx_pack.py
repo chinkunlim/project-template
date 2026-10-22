@@ -13,12 +13,15 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 EDITORCONFIG = """# Editor settings shared by every editor (https://editorconfig.org)
 root = true
@@ -138,6 +141,7 @@ def scaffold_dx_files(target_dir: Path, languages: list[str], names: dict[str, s
         languages: Base stack plus add-ons.
         names: `pkg`, `dist` and `license` (`MIT` or `none`).
     """
+    logger.debug("scaffold dx_files in %s", target_dir)
     _write(target_dir / ".editorconfig", EDITORCONFIG)
     for rel, content in vscode_files(languages, names["pkg"], names["dist"]).items():
         _write(target_dir / rel, content)

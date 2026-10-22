@@ -38,6 +38,10 @@ GIT_ENV = {
     "GIT_COMMITTER_NAME": "Template Test", "GIT_COMMITTER_EMAIL": "test@example.com",
 }
 os.environ.update(GIT_ENV)
+# No detached `git maintenance` / `gc --auto` after commits: a background repack can still be writing
+# `.git/objects` while a temporary project is being deleted ("Directory not empty: 'objects'")
+os.environ.update({"GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "maintenance.auto", "GIT_CONFIG_VALUE_0": "false",
+                   "GIT_CONFIG_KEY_1": "gc.auto", "GIT_CONFIG_VALUE_1": "0"})
 os.environ["TEMPLATE_NO_REGISTRY"] = "1"  # tests never add their temporary projects to the user's registry
 _REGISTRY_HOME = tempfile.TemporaryDirectory(prefix="template-test-registry-")
 os.environ["TEMPLATE_REGISTRY_FILE"] = str(Path(_REGISTRY_HOME.name) / "projects.json")  # and never read it either
@@ -403,7 +407,7 @@ class WorkflowTest(unittest.TestCase):
         """
         path = self.root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('"""Cache helpers."""\n\n\ndef ttl(seconds: int) -> int:\n    """Clamp a TTL.\n\n    Args:\n        seconds: Requested TTL.\n\n    Returns:\n        TTL between 1 and 3600.\n    """\n    return max(1, min(seconds, 3600))\n', encoding="utf-8")
+        path.write_text('"""Cache helpers."""\n\nimport logging\n\nlogger = logging.getLogger(__name__)\n\n\ndef ttl(seconds: int) -> int:\n    """Clamp a TTL.\n\n    Args:\n        seconds: Requested TTL.\n\n    Returns:\n        TTL between 1 and 3600.\n    """\n    return max(1, min(seconds, 3600))\n', encoding="utf-8")
 
     def test_commit_handles_paths_and_attribution(self) -> None:
         """Bug 1: the first `git status` line and names with spaces/CJK are committed intact."""
@@ -778,7 +782,7 @@ class MigrationTest(unittest.TestCase):
         blocked = run(self.new, "scripts/agentctl.py", "commit", "--agent", "tester", "-m", "docs: readme")
         self.assertNotEqual(blocked.returncode, 0, "the next commit is blocked until the moved file is fixed")
         (self.new / dest).write_text(
-            '"""Price calculations (migrated from legacy/utils.py)."""\n\n\ndef price_with_tax(price: float, rate: float) -> float:\n'
+            '"""Price calculations (migrated from legacy/utils.py)."""\n\nimport logging\n\nlogger = logging.getLogger(__name__)\n\n\ndef price_with_tax(price: float, rate: float) -> float:\n'
             '    """Add tax to a price.\n\n    Args:\n        price: Net price.\n        rate: Tax rate, e.g. 0.05.\n\n'
             '    Returns:\n        Gross price rounded to 2 decimals.\n    """\n    return round(price * (1 + rate), 2)\n', encoding="utf-8")
         fixed = run(self.new, "scripts/agentctl.py", "commit", "--agent", "tester", "-m", "refactor(services): document pricing")
@@ -802,7 +806,7 @@ class MigrationTest(unittest.TestCase):
         pkg = self.new / "src" / "shop_v2"
         run(self.new, "git", "mv", "legacy/utils.py", "src/shop_v2/services/pricing.py")
         (pkg / "services" / "pricing.py").write_text(
-            '"""Price calculations."""\n\n\ndef price_with_tax(price: float, rate: float) -> float:\n'
+            '"""Price calculations."""\n\nimport logging\n\nlogger = logging.getLogger(__name__)\n\n\ndef price_with_tax(price: float, rate: float) -> float:\n'
             '    """Add tax to a price.\n\n    Args:\n        price: Net price.\n        rate: Tax rate, e.g. 0.05.\n\n'
             '    Returns:\n        Gross price rounded to 2 decimals.\n    """\n    return round(price * (1 + rate), 2)\n', encoding="utf-8")
         for rel in ("src/shop_v2/services/greeting.py", "src/shop_v2/entrypoints/cli.py", "tests/test_greeting.py"):
@@ -1588,6 +1592,86 @@ class GuardTest(unittest.TestCase):
                 continue
             problems += review_guard.python_docstring_issues(ast.parse(path.read_text(encoding="utf-8")), rel.as_posix())
         self.assertEqual(problems, [])
+
+
+
+class LoggerRuleTest(unittest.TestCase):
+    """`[quality] require_logger`: every program file in a layer that defines functions creates a module logger (ADR-003)."""
+
+    STACKS = [("python", []), ("python", ["api", "db", "ollama", "evals", "web", "gas"]), ("node", []), ("gas", []),
+              ("go", []), ("rust", []), ("generic", []), ("mobile", []), ("node", ["web", "mobile"]), ("both", []), ("all", [])]
+
+    def setUp(self) -> None:
+        """Create a temporary folder for each test."""
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+
+    def tearDown(self) -> None:
+        """Remove the temporary folder."""
+        self.tmp.cleanup()
+
+    def offline_commands(self, root: Path) -> None:
+        """Blank `[commands]` whose toolchain is not installed here (Go, Rust), like a machine without them.
+
+        Args:
+            root: Project root.
+        """
+        toml = root / ".agents" / "project.toml"
+        text = toml.read_text(encoding="utf-8")
+        for tool in ("go", "cargo"):
+            if shutil.which(tool) is None:
+                text = re.sub(rf'^(lint|test) = "{tool} [^"]*"', r'\1 = ""', text, flags=re.M)
+        toml.write_text(text, encoding="utf-8")
+
+    def test_every_stack_passes_check_with_the_rule_on(self) -> None:
+        """New projects turn the rule on, and every stack's starter code passes `agentctl check` with it."""
+        for stack, addons in self.STACKS:
+            with self.subTest(stack=stack, addons=addons):
+                root = self.base / f"p_{stack}_{len(addons)}"
+                scaffold_project(root, root.name, stack=stack, addons=addons)
+                self.assertIn("require_logger = true", (root / ".agents" / "project.toml").read_text(encoding="utf-8"))
+                self.offline_commands(root)
+                if not HAS_NODE and ("gas" in addons or stack in ("gas", "all")):
+                    continue
+                res = run(root, "scripts/agentctl.py", "check")
+                self.assertEqual(res.returncode, 0, res.stdout[-3000:] + res.stderr[-2000:])
+                self.assertNotIn("[Logging]", res.stdout)
+
+    def test_python_service_without_logger_is_critical(self) -> None:
+        """A services module with a function but no module logger blocks with a CRITICAL `[Logging]` finding."""
+        root = self.base / "nolog"
+        scaffold_project(root, "nolog", stack="python", init_git_repo=False)
+        (root / "src" / "nolog" / "services" / "pricing.py").write_text(
+            '"""Pricing rules."""\n\n\ndef with_tax(amount: float) -> float:\n    """Add 5% tax.\n\n    Args:\n        amount: Net amount.\n\n'
+            '    Returns:\n        Gross amount.\n    """\n    return amount * 1.05\n', encoding="utf-8")
+        guard = run(root, ".agents/skills/code-review-guard/scripts/review_guard.py", "--json")
+        self.assertEqual(guard.returncode, 1)
+        found = [i for i in json.loads(guard.stdout)["issues"] if i["file"].endswith("services/pricing.py")]
+        self.assertEqual([i["severity"] for i in found], ["CRITICAL"], found)
+        self.assertIn("[Logging]", found[0]["msg"])
+        self.assertIn("logging.getLogger(__name__)", found[0]["msg"])
+        toml = root / ".agents" / "project.toml"
+        toml.write_text(toml.read_text(encoding="utf-8").replace("logger_exempt_layers = []", 'logger_exempt_layers = ["services"]'), encoding="utf-8")
+        self.assertEqual(run(root, ".agents/skills/code-review-guard/scripts/review_guard.py").returncode, 0, "exempt layers are skipped")
+
+    def test_messages_per_language_and_opt_in(self) -> None:
+        """Each language gets its own fix in the message; data-only and test files pass; the rule is off when unset."""
+        config = {"architecture": {"env_access_layers": ["config"]}, "quality": {"require_docstrings": False, "require_logger": True}}
+        cases = {
+            "src/services/a.js": ("export function f() {\n  return 1;\n}\n", "createLogger"),
+            "internal/services/a.go": ("package services\n\nfunc F() int {\n\treturn 1\n}\n", "slog"),
+            "src/services.rs": ("pub fn f() -> i32 {\n    1\n}\n", "use log::"),
+        }
+        for rel, (src, hint) in cases.items():
+            issues = review_guard.audit_brace_file(src, rel, "services", config)
+            self.assertEqual([i["severity"] for i in issues], ["CRITICAL"], rel)
+            self.assertIn(hint, issues[0]["msg"], rel)
+        ok_js = 'import { createLogger } from "../config/logger.js";\n\nconst logger = createLogger("s");\n\nexport function f() {\n  return 1;\n}\n'
+        self.assertEqual(review_guard.audit_brace_file(ok_js, "src/services/a.js", "services", config), [])
+        self.assertEqual(review_guard.audit_brace_file("export const A = 1;\n", "src/services/a.js", "services", config), [], "no functions")
+        self.assertEqual(review_guard.audit_python_file("def test_x():\n    pass\n", "src/pkg/services/test_x.py", "services", config), [])
+        self.assertEqual(review_guard.audit_brace_file(cases["src/services/a.js"][0], "src/services/a.js", "services",
+                                                       {**config, "quality": {"require_docstrings": False}}), [], "off unless enabled")
 
 
 if __name__ == "__main__":

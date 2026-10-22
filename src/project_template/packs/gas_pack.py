@@ -3,7 +3,7 @@
 
 Purpose:
     Lets GAS code be written, unit-tested and deployed from a normal repository:
-      - `src/*.js`         : GAS source (fully JSDoc-commented)
+      - `src/*.js`         : GAS source (fully JSDoc-commented); `Log.js` is the shared logger
       - `dev/gasShim.js`   : runs the GAS files in Node with fake Apps Script services
       - `dev/build.js`     : bundles `src/*.js` into `Code.gs` (`--check` verifies it)
       - `test/*.test.js`   : `node --test` unit tests
@@ -19,10 +19,13 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from project_template.packs.common import npm_slug, package_json, write_package_json
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 CLASP_VERSION = "^2.4.2"
 CLASPIGNORE = """# Push only the bundle and the manifest (clasp reads this file)
@@ -75,11 +78,72 @@ GAS_SOURCES = {
 /**
  * Read settings from Script Properties.
  * @param {GoogleAppsScript.Properties.Properties} [props] Property store; defaults to Script Properties.
- * @returns {{appEnv: string}} Settings object.
+ * @returns {{appEnv: string, logLevel: string}} Settings object.
  */
 function getConfig(props) {
+  var log = createLogger("Config");
   var store = props || PropertiesService.getScriptProperties();
-  return { appEnv: store.getProperty("APP_ENV") || "production" };
+  var cfg = { appEnv: store.getProperty("APP_ENV") || "production", logLevel: store.getProperty("LOG_LEVEL") || "INFO" };
+  log.debug("config loaded env=" + cfg.appEnv);
+  return cfg;
+}
+''',
+    "Log.js": '''/**
+ * @file Logging for Google Apps Script: one run id per execution, a level filter and the module name.
+ *
+ * Apps Script cannot write files, so lines go to `console` (Executions log / Cloud Logging);
+ * WARNING and above use console.warn / console.error. All files share one global scope, so each
+ * function creates its logger where it runs: `var log = createLogger("Main");`.
+ */
+
+var LOG_LEVELS_ = { DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40 };
+var LOG_STATE_ = { runId: "", level: 20 };
+
+/**
+ * Set the minimum level for this execution.
+ * @param {string} name DEBUG, INFO, WARNING or ERROR (unknown names mean INFO).
+ * @returns {void}
+ */
+function setLogLevel(name) {
+  LOG_STATE_.level = LOG_LEVELS_[String(name).toUpperCase()] || LOG_LEVELS_.INFO;
+}
+
+/**
+ * Write one log line to the Apps Script console.
+ * @param {string} level Level name, e.g. "INFO".
+ * @param {string} name Logger (module) name.
+ * @param {string} message Message text (never secrets or personal data).
+ * @returns {void}
+ */
+function writeLog_(level, name, message) {
+  if (LOG_LEVELS_[level] < LOG_STATE_.level) {
+    return;
+  }
+  if (!LOG_STATE_.runId) {
+    LOG_STATE_.runId = Math.random().toString(16).slice(2, 10);
+  }
+  var line = level + " [" + LOG_STATE_.runId + "] " + name + " - " + message;
+  if (LOG_LEVELS_[level] >= LOG_LEVELS_.ERROR) {
+    console.error(line);
+  } else if (LOG_LEVELS_[level] >= LOG_LEVELS_.WARNING) {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
+}
+
+/**
+ * Create a module logger.
+ * @param {string} name Module name shown on every line, e.g. "Main".
+ * @returns {{debug: Function, info: Function, warn: Function, error: Function}} Logger.
+ */
+function createLogger(name) {
+  return {
+    debug: function (message) { writeLog_("DEBUG", name, message); },
+    info: function (message) { writeLog_("INFO", name, message); },
+    warn: function (message) { writeLog_("WARNING", name, message); },
+    error: function (message) { writeLog_("ERROR", name, message); },
+  };
 }
 ''',
     "Main.js": '''/**
@@ -91,7 +155,10 @@ function getConfig(props) {
  * @returns {GoogleAppsScript.HTML.HtmlOutput} Plain status page.
  */
 function doGet() {
+  var log = createLogger("Main");
   var cfg = getConfig();
+  setLogLevel(cfg.logLevel);
+  log.info("doGet start env=" + cfg.appEnv);
   return HtmlService.createHtmlOutput("OK (" + cfg.appEnv + ")");
 }
 ''',
@@ -208,6 +275,7 @@ def scaffold_gas_pack(target_dir: Path, project_name: str, description: str, opt
         options: `timezone` (IANA name for `appsscript.json`, e.g. `Asia/Taipei`) and
             `pnpm` (version for `packageManager`; empty to omit).
     """
+    logger.debug("scaffold gas_pack in %s", target_dir)
     scripts = {
         "build": "node dev/build.js",
         "build:check": "node dev/build.js --check",

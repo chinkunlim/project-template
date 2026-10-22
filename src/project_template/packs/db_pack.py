@@ -14,9 +14,12 @@ Purpose:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 DB_DEPENDENCIES = ["sqlalchemy>=2.0", "alembic>=1.13"]
 DB_CHECK = "uv run alembic upgrade head && uv run alembic check"
@@ -36,12 +39,15 @@ MODELS_PY = '''"""ORM models (database tables). Only the adapters layer imports 
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from {pkg}.adapters.db.base import Base
+
+logger = logging.getLogger(__name__)
 
 
 def utc_now() -> datetime:
@@ -79,6 +85,7 @@ failed request never leaves half-written data.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -86,6 +93,8 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+logger = logging.getLogger(__name__)
 
 
 def create_db_engine(database_url: str) -> Engine:
@@ -100,6 +109,8 @@ def create_db_engine(database_url: str) -> Engine:
     Returns:
         The engine.
     """
+    # Log only the dialect, never the full URL (it may contain a password)
+    logger.info("database engine dialect=%s", database_url.split(":", 1)[0])
     if database_url in ("sqlite://", "sqlite:///:memory:"):
         return create_engine(database_url, connect_args={{"check_same_thread": False}}, poolclass=StaticPool)
     if database_url.startswith("sqlite:///"):
@@ -138,6 +149,7 @@ def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
         yield session
         session.commit()
     except Exception:
+        logger.warning("session rolled back after an error", exc_info=True)
         session.rollback()
         raise
     finally:
@@ -148,11 +160,15 @@ REPOSITORY_PY = '''"""Greeting repository: stores and reads greetings, returning
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from {pkg}.adapters.db.models import GreetingRecord
 from {pkg}.domain.models import GreetingResult
+
+logger = logging.getLogger(__name__)
 
 
 class GreetingRepository:
@@ -179,6 +195,7 @@ class GreetingRepository:
         record = GreetingRecord(user_name=user_name, message=result.message)
         self.session.add(record)
         self.session.flush()
+        logger.info("greeting stored id=%s", record.id)
         return record.id
 
     def recent(self, limit: int = 20, environment: str = "") -> list[GreetingResult]:
@@ -192,7 +209,8 @@ class GreetingRepository:
             Greetings as domain objects.
         """
         stmt = select(GreetingRecord).order_by(GreetingRecord.id.desc()).limit(limit)
-        rows = self.session.scalars(stmt)
+        rows = list(self.session.scalars(stmt))
+        logger.debug("recent greetings rows=%d", len(rows))
         return [GreetingResult(message=r.message, environment=environment) for r in rows]
 '''
 
@@ -281,6 +299,7 @@ ENV_PY = '''"""Alembic environment: connects with the app's config and compares 
 
 from __future__ import annotations
 
+import logging
 from logging.config import fileConfig
 
 from alembic import context
@@ -293,12 +312,14 @@ from {pkg}.config.settings import load_config
 alembic_config = context.config
 if alembic_config.config_file_name:
     fileConfig(alembic_config.config_file_name)
+logger = logging.getLogger("alembic.env")
 DATABASE_URL = load_config().database_url
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     """Emit SQL to stdout instead of connecting (`alembic upgrade head --sql`)."""
+    logger.info("migrations offline (SQL output)")
     context.configure(
         url=DATABASE_URL, target_metadata=target_metadata, literal_binds=True, render_as_batch=True
     )
@@ -308,6 +329,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Connect to the database and apply migrations (batch mode so SQLite can ALTER tables)."""
+    logger.info("migrations online")
     with create_db_engine(DATABASE_URL).connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True)
         with context.begin_transaction():
@@ -420,6 +442,7 @@ def scaffold_db_pack(target_dir: Path, pkg: str) -> None:
         target_dir: Project root directory.
         pkg: Python package name under `src/`.
     """
+    logger.debug("scaffold db_pack in %s", target_dir)
     db = target_dir / "src" / pkg / "adapters" / "db"
     _write(db / "__init__.py", '"""Database adapter: ORM models, sessions and repositories."""\n')
     _write(db / "base.py", BASE_PY)

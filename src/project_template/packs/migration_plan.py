@@ -15,11 +15,14 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 BATCH_ORDER = (
     "deps", "config", "db", "domain", "adapters", "services", "entrypoints", "flask", "web", "gas", "tests", "docs", "other",

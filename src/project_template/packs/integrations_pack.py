@@ -20,10 +20,13 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 
 def _json(data: dict[str, Any]) -> str:
@@ -136,6 +139,7 @@ def scaffold_integrations(target_dir: Path, names: dict[str, str], port: int = 8
         names: `project` (display name) and `dist` (command name).
         port: HTTP port of the web server (`HTTP_PORT`).
     """
+    logger.debug("scaffold integrations in %s", target_dir)
     for rel, content in agent_configs(names["dist"]).items():
         _write(target_dir / rel, content)
     _write(target_dir / "docs" / "INTEGRATIONS.md", GUIDE.format(dist=names["dist"], port=port))

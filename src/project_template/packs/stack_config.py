@@ -23,6 +23,7 @@ Environment isolation:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -32,6 +33,8 @@ from project_template.packs.common import slugify_package_name
 from project_template.packs.db_pack import DB_CHECK
 from project_template.packs.evals_pack import EVALS_COMMAND
 from project_template.packs.mobile_pack import MOBILE_TEST, MOBILE_TYPECHECK
+
+logger = logging.getLogger(__name__)
 
 STACK_CHOICES = ("python", "node", "gas", "go", "rust", "generic", "both", "all", "mobile")
 ADDON_CHOICES = ("web", "gas", "mobile", "api", "db", "ollama", "evals")
@@ -253,6 +256,9 @@ hard_max_file_lines = 800      # hard limit per file -> CRITICAL (split into sub
 max_commit_file_mb = 10        # pre-commit blocks larger files; data belongs in DATA_DIR
 block_data_files = true        # block PDF/EPUB/archives/media/DB files; set false for document projects
 print_allowed_layers = ["entrypoints"]  # other layers must log with `logging.getLogger(__name__)`, not print
+# Every source file in a layer that defines functions must create a module logger (CRITICAL)
+require_logger = true
+logger_exempt_layers = []      # e.g. ["domain"] for pure functions that never log
 
 [commands]
 # Python always runs through uv (project .venv, uv-managed Python) — never a global pip

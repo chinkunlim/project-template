@@ -26,11 +26,14 @@ Versions:
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from project_template.packs.common import NPM_BLOCK_ENGINES, npm_slug
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 EXPO_SDK = "58"
 DEPENDENCIES = {"expo": "~58.0.16", "expo-status-bar": "~58.0.3", "react": "19.3.0", "react-native": "0.88.0"}
@@ -57,6 +60,9 @@ ENV_TS = """/**
  * Expo inlines `EXPO_PUBLIC_*` variables into the app bundle at build time, so they are
  * visible to anyone who has the app: never put secrets here (keys stay on the backend).
  */
+import { createLogger } from "./logger";
+
+const logger = createLogger("config/env");
 
 /** Settings the rest of the app receives as arguments. */
 export interface AppConfig {
@@ -73,23 +79,38 @@ export interface AppConfig {
  * @returns The configuration with defaults for local development.
  */
 export function loadConfig(): AppConfig {
-  return {
+  const config = {
     apiUrl: (process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\\/$/, ""),
     logLevel: process.env.EXPO_PUBLIC_LOG_LEVEL ?? "info",
     timeoutMs: Number(process.env.EXPO_PUBLIC_TIMEOUT_MS ?? "10000"),
   };
+  logger.debug(`config loaded apiUrl=${config.apiUrl}`);
+  return config;
 }
 """
 
 LOGGER_TS = """/**
  * @file Small leveled logger so every module logs the same way.
  *
- * Lines look like `INFO [adapters/api] GET /health -> 200 (35 ms)`. They appear in the
- * Expo CLI terminal and in the device log (Xcode / Android Studio Logcat).
+ * Lines look like `INFO [3f9a1c2e] [adapters/api] GET /health -> 200 (35 ms)` (run id = one app
+ * launch). They appear in the Expo CLI terminal and in the device log (Xcode / Android Studio
+ * Logcat); a phone cannot write to DATA_DIR. Every module creates one at the top:
+ * `const logger = createLogger("services/greeting");` and the root screen calls `setLogLevel()`.
  */
 
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 type Level = (typeof LEVELS)[number];
+const RUN_ID = Math.random().toString(16).slice(2, 10);
+const state = { threshold: 1 };
+
+/**
+ * Set the lowest level printed by loggers created without their own level.
+ * @param minLevel `debug` | `info` | `warn` | `error` (from `AppConfig.logLevel`).
+ * @returns Nothing.
+ */
+export function setLogLevel(minLevel: string): void {
+  state.threshold = Math.max(0, LEVELS.indexOf(minLevel as Level));
+}
 
 /** Logger bound to one module name. */
 export interface Logger {
@@ -102,21 +123,21 @@ export interface Logger {
 /**
  * Create a logger for one module.
  * @param scope Module name shown on every line, e.g. `services/greeting`.
- * @param minLevel Lowest level to print (from `AppConfig.logLevel`).
+ * @param minLevel Lowest level to print; omitted: the level set by `setLogLevel()` (default info).
  * @returns The logger.
  */
-export function createLogger(scope: string, minLevel: string = "info"): Logger {
-  const threshold = Math.max(0, LEVELS.indexOf(minLevel as Level));
+export function createLogger(scope: string, minLevel?: string): Logger {
+  const own = minLevel === undefined ? undefined : Math.max(0, LEVELS.indexOf(minLevel as Level));
   /**
    * Build the print function for one level.
    * @param level Level written at the start of each line.
    * @returns Function that prints a message (and optional details) when the level is enabled.
    */
   const emit =(level: Level) => (message: string, ...details: unknown[]): void => {
-    if (LEVELS.indexOf(level) < threshold) {
+    if (LEVELS.indexOf(level) < (own ?? state.threshold)) {
       return;
     }
-    const line = `${level.toUpperCase()} [${scope}] ${message}`;
+    const line = `${level.toUpperCase()} [${RUN_ID}] [${scope}] ${message}`;
     const sink = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
     sink(line, ...details);
   };
@@ -144,9 +165,13 @@ export interface GreetingResult {
 GREETING_TS = """/**
  * @file Services layer: pure business logic (no React, no network), unit-tested with `node --test`.
  *
- * Only type imports from other modules here, so Node can run the file directly in tests.
+ * Only type imports and the logger (imported with its `.ts` extension) here, so Node can run
+ * the file directly in tests.
  */
+import { createLogger } from "../config/logger.ts";
 import type { GreetingRequest, GreetingResult } from "../domain/models";
+
+const logger = createLogger("services/greeting");
 
 /**
  * Build a greeting for the requested user.
@@ -155,6 +180,7 @@ import type { GreetingRequest, GreetingResult } from "../domain/models";
  */
 export function createGreeting(request: GreetingRequest): GreetingResult {
   const name = request.userName.trim() || "World";
+  logger.debug(`greeting built for ${name.length} characters`);
   return { message: `Hello, ${name}!` };
 }
 """
@@ -207,8 +233,10 @@ import { Button, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { fetchHealth } from "../adapters/api";
 import { loadConfig } from "../config/env";
-import { createLogger } from "../config/logger";
+import { createLogger, setLogLevel } from "../config/logger";
 import { createGreeting } from "../services/greeting";
+
+const logger = createLogger("entrypoints/App");
 
 /**
  * Root screen: greet a name and check that the backend is reachable.
@@ -216,7 +244,7 @@ import { createGreeting } from "../services/greeting";
  */
 export default function App(): React.JSX.Element {
   const config = useMemo(loadConfig, []);
-  const log = useMemo(() => createLogger("entrypoints/App", config.logLevel), [config]);
+  setLogLevel(config.logLevel);
   const [name, setName] = useState("");
   const [backend, setBackend] = useState("not checked");
   const greeting = createGreeting({ userName: name }).message;
@@ -232,7 +260,7 @@ export default function App(): React.JSX.Element {
     } catch {
       setBackend(`unreachable: ${config.apiUrl}`);
     }
-    log.info("backend check finished");
+    logger.info("backend check finished");
   };
 
   return (
@@ -339,7 +367,7 @@ pnpm tunnel
 
 - 分層同其他程式：`config`（唯一讀 `process.env`）→ `domain` → `services`（純邏輯）→ `adapters`（網路、儲存）→ `entrypoints`（畫面）。
 - 每個檔案開頭 `@file` 說明；每個函式 JSDoc 與每個 `@param`（`code-review-guard` 會檢查）。
-- Log 用 `createLogger("<層>/<模組>")`，不要直接 `console.log`；錯誤一定記 `log.error`。
+- 每個有函式的檔案在開頭建立 `const logger = createLogger("<層>/<模組>")`（`code-review-guard` 會檢查），不要直接 `console.log`；錯誤一定記 `logger.error`。
 - `EXPO_PUBLIC_*` 會被打包進 App，**任何人都看得到**：金鑰只放後端。
 - 簽章檔（`*.jks`、`*.keystore`、`*.p8`、`*.p12`、`*.mobileprovision`）不進 git（pre-commit 會擋），放 `~/.config/<專案>/`。
 - `mobile/ios/`、`mobile/android/` 是 `expo prebuild` 產生的，不進 git；需要原生模組時改用 development build。
@@ -354,7 +382,7 @@ pnpm test
 pnpm typecheck
 ```
 
-`services/` 只用 `import type` 引用其他模組，所以 Node 能直接執行 TypeScript 測試，不需要安裝 Jest。
+`services/` 只用 `import type` 與 logger（`../config/logger.ts`，含副檔名）引用其他模組，所以 Node 能直接執行 TypeScript 測試，不需要安裝 Jest。
 
 ## 6. 版本與上架（之後再做）
 
@@ -421,6 +449,7 @@ def scaffold_mobile_pack(target_dir: Path, project_name: str, pnpm_version: str)
         project_name: Project name (app display name).
         pnpm_version: pnpm version for `packageManager` (empty to omit).
     """
+    logger.debug("scaffold mobile_pack in %s", target_dir)
     mobile = target_dir / "mobile"
     _write(mobile / "package.json", mobile_package_json(project_name, pnpm_version))
     _write(mobile / ".npmrc", MOBILE_NPMRC)

@@ -9,12 +9,15 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import stat
 import subprocess
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_NODE = "lts/*"
 # `engines.npm` + `engine-strict` makes `npm install` stop before writing package-lock.json; pnpm ignores it

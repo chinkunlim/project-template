@@ -15,6 +15,7 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from project_template.packs.common import slugify_package_name
 from project_template.packs.common import write_file as _write
 from project_template.packs.db_pack import DB_DEPENDENCIES, scaffold_db_pack
 from project_template.packs.ollama_pack import scaffold_ollama_pack
+
+logger = logging.getLogger(__name__)
 
 PYTHON_VERSION = "3.11"
 
@@ -39,10 +42,12 @@ from the current working directory), so the project and its data can be moved to
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = "../../projects-data/{dist}"
 
@@ -188,6 +193,7 @@ def load_config() -> AppConfig:
     """
     load_dotenv_file(PROJECT_ROOT / ".env")
     data_dir = resolve_data_dir(os.environ.get("DATA_DIR", DEFAULT_DATA_DIR))
+    logger.debug("config loaded data_dir=%s", data_dir)
     return AppConfig(
         app_env=os.environ.get("APP_ENV", "development").strip(),
         log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
@@ -224,6 +230,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import TracebackType
 
+logger = logging.getLogger(__name__)
 LOG_FORMAT = "%(asctime)s %(levelname)-7s [%(run_id)s] %(name)s:%(funcName)s:%(lineno)d - %(message)s"
 _RUN_ID: contextvars.ContextVar[str] = contextvars.ContextVar("run_id", default="-")
 
@@ -328,7 +335,7 @@ def setup_logging(level: str = "INFO", log_dir: Path | None = None) -> str:
     run_id = new_run_id()
     _RUN_ID.set(run_id)
     python = sys.version.split()[0]
-    logging.getLogger(__name__).info("run started pid=%s python=%s log_dir=%s", os.getpid(), python, log_dir)
+    logger.info("run started pid=%s python=%s log_dir=%s", os.getpid(), python, log_dir)
     return run_id
 '''
 
@@ -615,6 +622,7 @@ def scaffold_python_pack(target_dir: Path, project_name: str, description: str, 
         description: One-line description for `pyproject.toml`.
         addons: Project add-ons; `api` adds FastAPI, `db` adds SQLAlchemy + Alembic + SQLite.
     """
+    logger.debug("scaffold python_pack in %s", target_dir)
     addons = addons or []
     pkg = slugify_package_name(project_name)
     dist = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"

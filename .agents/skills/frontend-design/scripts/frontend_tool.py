@@ -229,6 +229,28 @@ def render_web_app_js() -> str:
     return """/**
  * @file Web App state machine demo covering the Loading / Empty / Error / Populated states.
  */
+
+/**
+ * Create a module logger that prefixes every console line with a run id, level and module name.
+ * @param {string} name Module name shown on every line.
+ * @returns {{info: Function, warn: Function, error: Function}} Logger.
+ */
+function createLogger(name) {
+  const runId = Math.random().toString(16).slice(2, 10);
+  /**
+   * Build the line prefix for one level.
+   * @param {string} level Level name, e.g. "INFO".
+   * @returns {string} Prefix with time, level, run id and module.
+   */
+  const prefix = (level) => `${new Date().toISOString()} ${level} [${runId}] ${name} -`;
+  return {
+    info: (...args) => console.log(prefix('INFO'), ...args),
+    warn: (...args) => console.warn(prefix('WARNING'), ...args),
+    error: (...args) => console.error(prefix('ERROR'), ...args),
+  };
+}
+
+const logger = createLogger('app');
 const container = document.getElementById('appStateContainer');
 const refreshBtn = document.getElementById('refreshBtn');
 
@@ -270,6 +292,7 @@ function renderState(state, payload = {}) {
  */
 function loadDashboard() {
   renderState('loading');
+  logger.info('dashboard loading');
   setTimeout(() => renderState('populated', { latencyMs: 38 }), 180);
 }
 

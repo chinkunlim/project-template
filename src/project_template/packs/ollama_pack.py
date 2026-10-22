@@ -17,18 +17,24 @@ Purpose:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 CLIENT_PY = '''"""Ollama HTTP client (standard library only); talks to 127.0.0.1, never localhost."""
 
 from __future__ import annotations
 
 import json
+import logging
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
@@ -65,10 +71,12 @@ class OllamaClient:
         request = urllib.request.Request(
             f"{{self.base_url}}/api/generate", data=body, headers={{"Content-Type": "application/json"}}
         )
+        logger.info("ollama generate model=%s prompt_chars=%d", self.model, len(prompt))
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            logger.warning("ollama request failed model=%s: %s", self.model, exc)
             raise LLMError(f"Ollama request failed: {{exc}}") from exc
         return str(data.get("response", ""))
 '''
@@ -83,6 +91,7 @@ storms or draining the battery.
 
 from __future__ import annotations
 
+import logging
 import platform
 import re
 import shutil
@@ -90,6 +99,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 MIN_RAM_GB_AC = 2.0
 MIN_RAM_GB_BATTERY = 4.0
 MIN_BATTERY_PERCENT = 40
@@ -153,6 +163,7 @@ def check_resources(
     ram = available_ram_gb() if ram_gb is None else ram_gb
     need_ram = MIN_RAM_GB_AC if on_ac else MIN_RAM_GB_BATTERY
     disk_gb = shutil.disk_usage(path if path.exists() else Path.home()).free / 1024**3
+    logger.debug("resources ram=%.1fGB ac=%s battery=%s%% disk=%.1fGB", ram, on_ac, percent, disk_gb)
     if ram < need_ram:
         return GuardResult(False, f"RAM {{ram:.1f}} GB < {{need_ram}} GB")
     if not on_ac and percent < MIN_BATTERY_PERCENT:
@@ -167,9 +178,12 @@ QUARANTINE_PY = '''"""Quarantine: park items that failed or are low-confidence s
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def quarantine(needs_review_dir: Path, item_id: str, content: str, reason: str) -> Path:
@@ -192,6 +206,7 @@ def quarantine(needs_review_dir: Path, item_id: str, content: str, reason: str) 
     target.with_suffix(".reason.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    logger.warning("quarantined item=%s reason=%s file=%s", item_id, reason, target.name)
     return target
 '''
 
@@ -199,6 +214,9 @@ PROMPTS_PY = '''"""Prompt registry: every prompt sent to a model lives here (lis
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
 PROMPTS: dict[str, str] = {{
     "review_text": (
         "You are a careful reviewer. Fix obvious typos in the text below and answer with the "
@@ -224,6 +242,7 @@ class PromptRegistry:
         Raises:
             KeyError: When the prompt name or a placeholder is unknown.
         """
+        logger.debug("render prompt name=%s", name)
         return PROMPTS[name].format(**values)
 '''
 
@@ -367,6 +386,7 @@ def scaffold_ollama_pack(target_dir: Path, pkg: str) -> None:
         target_dir: Project root directory.
         pkg: Python package name under `src/`.
     """
+    logger.debug("scaffold ollama_pack in %s", target_dir)
     base = target_dir / "src" / pkg
     _write(base / "adapters" / "llm" / "__init__.py", '"""Local model adapters (Ollama) and the hardware guard."""\n')
     _write(base / "adapters" / "llm" / "ollama_client.py", CLIENT_PY.format())

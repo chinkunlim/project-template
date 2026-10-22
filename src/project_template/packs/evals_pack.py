@@ -13,9 +13,12 @@ Purpose:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from project_template.packs.common import write_file as _write
+
+logger = logging.getLogger(__name__)
 
 EVALS_COMMAND = "uv run python evals/run_evals.py"
 
@@ -26,9 +29,11 @@ Add project-specific rules to `RULES` (e.g. "abstract present", "no orphan page 
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 
+logger = logging.getLogger(__name__)
 Rule = Callable[[str], tuple[bool, str]]
 MIN_BYTES = 200
 
@@ -78,6 +83,8 @@ def no_error_markers(text: str) -> tuple[bool, str]:
     """
     markers = ("Traceback (most recent call last)", "TODO", "[object Object]", "\\ufffd")
     found = [m for m in markers if m in text]
+    if found:
+        logger.debug("error markers found: %s", found)
     return not found, f"markers found: {found}" if found else "no error markers"
 
 
@@ -106,6 +113,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -113,6 +121,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from checks import RULES  # noqa: E402
 
+logger = logging.getLogger("evals")
 CASES = Path(__file__).resolve().parent / "cases"
 
 
@@ -144,9 +153,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--outputs", default=str(CASES), help="folder with *.md outputs")
     parser.add_argument("--min-score", type=float, default=0.9, help="minimum average score (0-1)")
     args = parser.parse_args(argv)
+    # Progress goes to stderr; the score report stays on stdout
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s - %(message)s")
+    logger.info("evals start outputs=%s min_score=%s", args.outputs, args.min_score)
     files = sorted(Path(args.outputs).expanduser().rglob("*.md"))
     if not files:
         print(f"no outputs found in {args.outputs}")
+        logger.warning("evals done: no outputs")
         return 1
     scores = []
     for path in files:
@@ -155,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{score:5.0%}  {path.name}" + (f"  ✗ {'; '.join(failed)}" if failed else ""))
     average = sum(scores) / len(scores)
     print(f"average {average:.0%} over {len(files)} files (min {args.min_score:.0%})")
+    logger.info("evals done average=%.2f files=%d", average, len(files))
     return 0 if average >= args.min_score else 1
 
 
@@ -195,6 +209,7 @@ def scaffold_evals_pack(target_dir: Path) -> None:
     Args:
         target_dir: Project root directory.
     """
+    logger.debug("scaffold evals_pack in %s", target_dir)
     evals = target_dir / "evals"
     _write(evals / "checks.py", CHECKS_PY)
     _write(evals / "run_evals.py", RUN_PY)

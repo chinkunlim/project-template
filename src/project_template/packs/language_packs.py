@@ -10,12 +10,15 @@ Packs:
     web_pack.py    : `web/` plain HTML + CSS + JS (add-on)
     gas_pack.py    : Google Apps Script with Node tests and project-local clasp (stack or `gas/` add-on)
     mobile_pack.py : Expo (React Native + TypeScript) app for Android and iOS (`mobile/` add-on)
-    other_packs.py : Node.js, Go, Rust, generic
+    other_packs.py : Node.js (with a shared logger module), generic
+    go_pack.py     : Go (log/slog)
+    rust_pack.py   : Rust (log crate)
     stack_config.py: stacks/add-ons -> project.toml, .gitignore, .env.example, CI workflow
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -24,15 +27,14 @@ from project_template.packs.common import detect_node_toolchain, slugify_package
 from project_template.packs.dx_pack import scaffold_dx_files
 from project_template.packs.evals_pack import scaffold_evals_pack
 from project_template.packs.gas_pack import scaffold_gas_pack
+from project_template.packs.go_pack import scaffold_go_pack
 from project_template.packs.mobile_pack import scaffold_mobile_pack
-from project_template.packs.other_packs import (
-    scaffold_generic_pack,
-    scaffold_go_pack,
-    scaffold_node_pack,
-    scaffold_rust_pack,
-)
+from project_template.packs.other_packs import scaffold_generic_pack, scaffold_node_pack
 from project_template.packs.python_pack import scaffold_python_pack
+from project_template.packs.rust_pack import scaffold_rust_pack
 from project_template.packs.web_pack import scaffold_web_pack
+
+logger = logging.getLogger(__name__)
 
 
 def generate_stack_files(target_dir: Path, project_name: str, settings: dict[str, Any], options: dict[str, str]) -> None:
@@ -45,6 +47,7 @@ def generate_stack_files(target_dir: Path, project_name: str, settings: dict[str
         options: Extra values: `description`, `timezone` (IANA name for GAS), `license`
             (`MIT` / `none`), and optional `node` / `pnpm` versions (detected when omitted).
     """
+    logger.debug("generate starter files stack=%s addons=%s in %s", settings["base"], settings["addons"], target_dir)
     base, description = settings["base"], options.get("description", "")
     uses_node = base in ("node", "gas") or bool({"gas", "mobile"} & set(settings["addons"]))
     toolchain = {**detect_node_toolchain(), **{k: v for k, v in options.items() if k in ("node", "pnpm") and v}} if uses_node else {}

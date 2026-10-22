@@ -19,6 +19,10 @@ Purpose:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 NAMING_NOTE = (
     "> 命名規則：`_TEMPLATE.md` 是新增紀錄時要照著寫的範本；紀錄檔命名為 `{pattern}`。"
     "整個專案只有根目錄一份 `README.md`。\n"
