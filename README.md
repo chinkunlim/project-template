@@ -168,7 +168,7 @@ my_app/
 1. **統一結構**：所有專案相同的 `docs/` 骨架與 AGENTS.md「文件放哪裡」對照表。命名規則：只有根目錄一份 `README.md`；每個 docs 資料夾用全大寫的說明/總表檔（`DECISIONS.md`、`KNOWN_ISSUES.md`、`SPECS.md`、`ARCHITECTURE.md`），新增紀錄照同資料夾的 `_TEMPLATE.md`。
 2. **交接與溯源**：
    - Git trailers（`Agent:` `Model:` `Task:` `Version:`）記錄每個 commit 是誰做的。
-   - 每次對話結束由 `agentctl closeout` 在 `.agents/conversations/` 產生**逐字稿＋摘要**兩個檔案（去除個資、只存本機、不進 git，專案結束可刪除）；交接看板 `LATEST.md`（在 git）保留目標、錯誤根因、下一步各一行。
+   - 說「收工」時，Agent 先**全面更新所有 Markdown 文件**，再由 `agentctl closeout` 跑測試、commit 並**推送到 GitHub**（`--no-push` 只留在本機）；同時在 `.agents/conversations/` 產生**逐字稿＋摘要**兩個檔案（去除個資、只存本機、不進 git，專案結束可刪除）；交接看板 `LATEST.md`（在 git）保留目標、錯誤根因、下一步各一行。
    - 任務卡 `history` 記錄經手過程；需要時 `agentctl audit` 彙整成報告。
    - 版本：commit 只在 `CHANGELOG.md` 的 `## [Unreleased]` 加一行；要發布時 `agentctl finish --tag` 才升版、打本機 tag。
 3. **完整註解**：每個檔案開頭說明、每個函數說明與每個參數（Python `Args:`、JS `@param`、Go `//`、Rust `///`）。`code-review-guard` 與 pre-commit hook 會擋下缺漏；範本程式本身就照規範寫。

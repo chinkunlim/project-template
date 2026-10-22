@@ -5,6 +5,8 @@ All notable changes to **project_template** are documented here
 The template's version is the framework version that projects record in `.agents/framework.lock`.
 
 ## [Unreleased]
+### Changed
+- Session closeout: the agent first updates every Markdown document; `agentctl closeout` lists the project documents this session did not touch, then commits and pushes to the upstream branch (`--no-push` keeps it local).
 
 ## [3.3.0] - 2026-10-21
 

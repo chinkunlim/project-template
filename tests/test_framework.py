@@ -564,6 +564,36 @@ class WorkflowTest(unittest.TestCase):
         task = json.loads(next((self.root / ".agents" / "tasks").glob("TASK-001-*.json")).read_text(encoding="utf-8"))
         self.assertEqual([h["action"] for h in task["history"]], ["created_and_claimed", "handed_off", "claimed", "claimed", "done"])
 
+    def test_closeout_lists_docs_and_pushes(self) -> None:
+        """Closeout lists documents this session did not touch, commits, and pushes to the upstream by default."""
+        remote = Path(self.tmp.name) / "remote.git"
+        run(self.root, "git", "init", "-q", "--bare", str(remote))
+        run(self.root, "git", "remote", "add", "origin", str(remote))
+        self.assertEqual(run(self.root, "git", "push", "-q", "-u", "origin", "main", env={"ALLOW_PUSH": "1"}).returncode, 0)
+        self.write_documented_module("src/collab/services/cache.py")
+        changelog = self.root / "CHANGELOG.md"
+        changelog.write_text(changelog.read_text(encoding="utf-8").replace("## [Unreleased]\n", "## [Unreleased]\n- Cache.\n"), encoding="utf-8")
+        res = run(self.root, "scripts/agentctl.py", "closeout", "--goal", "Add cache", "--next", "TTL", env={"CLAUDECODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("✅ CHANGELOG.md", res.stdout, "updated documents are listed")
+        self.assertIn("📄 README.md", res.stdout, "untouched documents are listed for review")
+        self.assertNotIn("CLAUDE.md", res.stdout.split("[3/7]", 1)[1].split("[4/7]", 1)[0], "generated files are not listed")
+        self.assertIn("🚀 已推送", res.stdout)
+        self.assertEqual(run(self.root, "git", "rev-parse", "HEAD").stdout, run(self.root, "git", "rev-parse", "origin/main").stdout)
+
+        (self.pkg / "services" / "cache.py").write_text((self.pkg / "services" / "cache.py").read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        res = run(self.root, "scripts/agentctl.py", "closeout", "--goal", "Tweak", "--no-push", env={"CLAUDECODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertNotEqual(run(self.root, "git", "rev-parse", "HEAD").stdout, run(self.root, "git", "rev-parse", "origin/main").stdout, "--no-push keeps it local")
+
+    def test_closeout_without_upstream_says_so(self) -> None:
+        """Without an upstream branch the commit stays local and closeout explains why (exit code 1)."""
+        self.write_documented_module("src/collab/services/cache.py")
+        res = run(self.root, "scripts/agentctl.py", "closeout", "--goal", "Add cache", env={"CLAUDECODE": "1"})
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("沒有遠端分支", res.stdout)
+        self.assertEqual(run(self.root, "git", "status", "--porcelain", "src").stdout.strip(), "", "the work is still committed")
+
     def test_closeout_writes_local_transcript_and_summary(self) -> None:
         """Bug 3 + 4: closeout attributes the detected agent and writes a local, redacted transcript + summary."""
         self.write_documented_module("src/collab/services/cache.py")
@@ -575,7 +605,7 @@ class WorkflowTest(unittest.TestCase):
         ]
         export.write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
         res = run(self.root, "scripts/agentctl.py", "closeout", "--goal", "Add cache", "--issues", "None", "--next", "TTL metric",
-                  "--transcript", str(export), env={"CLAUDECODE": "1"})
+                  "--transcript", str(export), "--no-push", env={"CLAUDECODE": "1"})
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         body = git_log_body(self.root)
         self.assertIn("Agent: claude-code", body)

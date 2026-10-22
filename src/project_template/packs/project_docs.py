@@ -33,7 +33,7 @@ AGENTS_TEMPLATE = """# AGENTS.md — {project_name}
 | 「存檔」「commit」 | `python3 scripts/agentctl.py commit --agent <名字> --model <模型>`（訊息用英文） |
 | 「去上課」「先暫停」「等一下回來」 | `python3 scripts/agentctl.py pause "<English reason>"` |
 | 「換人做」「交給 Cursor」 | `python3 scripts/agentctl.py task handoff TASK-NNN --to <agent> --done-items ... --todo-items ...` |
-| 「結束對話」「收工」「今天先這樣」 | `python3 scripts/agentctl.py closeout --agent <名字> --goal ... --decisions ... --issues ... --next ...` |
+| 「結束對話」「收工」「今天先這樣」 | **先全面更新所有 md**（`session-closeout` skill §1），再 `python3 scripts/agentctl.py closeout --agent <名字> --goal ... --decisions ... --issues ... --next ...`（會 commit 並推送到 GitHub） |
 | 「推上去」 | 先列出未推送的 commit 並**確認**，同意後才 `agentctl commit --push` |
 | 「出版本」「專案完成了」 | `python3 scripts/agentctl.py finish`（驗收清單）；要發布再加 `--tag`（Unreleased → 新版本 + 本機 tag） |
 | 「做一個網頁」「給 Open WebUI / Ollama / Agent 用」 | **先依 [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 確認需求**並請使用者確認摘要，再做 FastAPI + MCP（核心規則 13）；專案沒有 `api` 時先問使用者 |
@@ -50,7 +50,7 @@ AGENTS_TEMPLATE = """# AGENTS.md — {project_name}
 7. **單向分層**：依 `.agents/project.toml` 的 `[architecture] layers`，上層可依賴下層，反之禁止。
 8. **環境隔離（不污染主機）**：Python 只用 `uv add` / `uv run`，Node 只用 `pnpm add` / `pnpm exec`；禁止 `pip install`、`npm`、`npx`、全域安裝與 `sudo`（見 [`ENVIRONMENT_AND_DEPENDENCIES.md`](docs/standards/ENVIRONMENT_AND_DEPENDENCIES.md)）。
 9. **本機服務只綁 `127.0.0.1`**：網址寫 `http://127.0.0.1:<port>`，不寫 `localhost`、不綁 `0.0.0.0`。{mobile_rule}
-10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
+10. **Git**：完成一個可通過測試的修改就用 `agentctl commit`；訊息一律英文；未經使用者明確同意不得 push，收工（closeout）例外：使用者已同意收工時推送（見 [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)）。
 11. **通用規則回寫母版**：使用者提出「以後每個專案都要這樣」的規則時，寫進 [`docs/TEMPLATE_FEEDBACK.md`](docs/TEMPLATE_FEEDBACK.md)，由使用者決定是否更新專案模板；只適用本專案的規則寫進 [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)。
 12. **Log 追蹤**：執行的開始與結束、外部呼叫、跳過與重試、例外都要記 log，不記秘密與個資。{log_how}（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
 13. **網頁一定要能給 AI 工具用**：使用者要網頁、API，或要讓 Open WebUI / Ollama / 其他 Agent 使用時，先依 [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 的清單確認需求（誰用、哪些動作會改資料、接哪些工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請使用者確認；再一律用 FastAPI（`--with api`），不要做單純的網頁。同一組 `services` 由三個入口呼叫：HTTP 路由（OpenAPI 給 Open WebUI）、MCP 工具（`entrypoints/mcp_server.py`，給 Claude Code、Antigravity、OpenCode、Cursor、Open WebUI）與網頁。新增功能時三個入口一起接；會修改或刪除資料的 MCP 工具要有 `confirm` 參數{integrations_link}。
@@ -153,7 +153,7 @@ python3 scripts/agentctl.py check
 | 「新功能：…」 | 建任務卡，寫測試與程式 |
 | 「commit」 | 檢查後本機 commit（英文訊息，不會推送） |
 | 「去上課」「先暫停」 | 記下進度，下次接著做 |
-| 「收工」 | 測試、寫對話紀錄與摘要、更新交接看板、commit |
+| 「收工」 | 更新所有文件、測試、寫對話紀錄與摘要、更新交接看板、commit 並推送到 GitHub |
 | 「推上去」 | 列出要推送的 commit，等你同意 |
 | 「出版本」「專案完成了」 | 完成驗收；`--tag` 時升版並打 tag |
 
