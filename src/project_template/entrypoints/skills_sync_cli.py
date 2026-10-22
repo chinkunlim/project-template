@@ -19,14 +19,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
+from project_template.config.logging_setup import FILE_ONLY, run_command
 from project_template.config.settings import SKILLS_CACHE
 from project_template.config.settings import TEMPLATE_ROOT as ROOT
+
+logger = logging.getLogger(__name__)
 
 LOCK_CANDIDATES = (ROOT / ".agents" / "skills" / "skills.lock.json",)
 GIT_TIMEOUT = 300
@@ -99,6 +103,7 @@ def fetch_source(name: str, spec: dict[str, Any], cache_root: Path) -> bool:
             res = git(args, cwd)
             if res.returncode != 0:
                 print(f"  ! {name}: git {args[0]} failed: {res.stderr.strip()[:200]}")
+                logger.warning("skill source %s: git %s failed exit=%s", name, args[0], res.returncode, extra=FILE_ONLY)
                 return False
         for rel in spec.get("paths", []):
             src, dst = clone / rel, target / rel
@@ -110,6 +115,7 @@ def fetch_source(name: str, spec: dict[str, Any], cache_root: Path) -> bool:
     target.mkdir(parents=True, exist_ok=True)
     (target / "SOURCE.txt").write_text(f"repo: {spec['repo']}\ncommit: {spec['commit']}\nlicense: {spec.get('license', '?')}\n", encoding="utf-8")
     print(f"  + {name}: cached {spec['commit']} -> {target.relative_to(ROOT)}")
+    logger.info("skill source %s cached at %s", name, spec["commit"])
     return True
 
 
@@ -154,6 +160,18 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Process exit code (1 when any fetch/update failed).
     """
+    return run_command("sync_github_skills", _main, argv)
+
+
+def _main(argv: list[str] | None) -> int:
+    """Do the work of `main()` (logging is already set up).
+
+    Args:
+        argv: Arguments to parse; None = `sys.argv[1:]`.
+
+    Returns:
+        Process exit code.
+    """
     parser = argparse.ArgumentParser(description="下載 / 更新 skills 上游參考原始碼（釘選 commit，存放於 .skills-cache/）")
     parser.add_argument("action", choices=["list", "fetch", "update"])
     parser.add_argument("names", nargs="*", help="只處理指定的來源")
@@ -176,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         newest = latest_commit(spec["repo"])
         if not newest:
             print(f"  ! {name}: unreachable, pin kept at {spec['commit']}")
+            logger.warning("skill source %s unreachable, pin kept at %s", name, spec["commit"], extra=FILE_ONLY)
             failed = True
         elif newest != spec["commit"]:
             print(f"  ~ {name}: {spec['commit']} -> {newest} (review the upstream diff before fetching)")

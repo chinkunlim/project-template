@@ -20,6 +20,7 @@
 ## 3. 和通用規範不同的例外（要寫理由）
 
 - **不跑 `ruff format`、行長 160**：`packs/` 裡大部分是新專案檔案的文字範本，它們的換行就是產生出來的檔案的換行；`packs/` 與 `tests/`（測試資料）不檢查 E501。
+- **母版的 log**：母版也遵守核心規則 12，log 在母版 `.env` 的 `DATA_DIR`（預設 `../../projects-data/project_template`）的 `logs/app.log`、`logs/errors.log`，由 `config/logging_setup.py` 設定（和產生的專案相同：run id、輪替檔案、未捕捉例外）。兩個和專案不同的地方：(1) 只看 `TEMPLATE_DATA_DIR` 或母版 `.env` 的 `DATA_DIR`，**不讀繼承來的 `DATA_DIR` 環境變數**（Open WebUI 會 export 一個，母版又要把它從專案指令的環境中移除）；測試用 `TEMPLATE_DATA_DIR` 指到暫存資料夾。(2) 終端機只顯示 WARNING 以上、只有訊息文字（使用者讀的是 `print` 輸出）；指令已經印給使用者看的警告加 `extra=FILE_ONLY`，只寫進 log 檔。每個入口的 `main()` 用 `run_command()` 包起來（記錄開始、結束碼、例外）。MCP stdio 的 stdout 是通訊通道，log 只能寫 stderr 和檔案。
 - **`.local/projects.json`**（建立過的專案清單）放在母版內、不進 git，而不是 `DATA_DIR`：它記錄的是這台電腦上的專案位置，跟著母版走。
 
 ## 4. 禁止事項

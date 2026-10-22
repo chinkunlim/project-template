@@ -44,6 +44,7 @@ os.environ["TEMPLATE_REGISTRY_FILE"] = str(Path(_REGISTRY_HOME.name) / "projects
 os.environ["TEMPLATE_SKIP_UV_LOCK"] = "1"  # unit tests stay offline; see UvIntegrationTest for the real uv flow
 _DATA_HOME = tempfile.TemporaryDirectory(prefix="template-test-data-")
 os.environ["DATA_DIR"] = _DATA_HOME.name  # tests never write into the user's real ~/project-data
+os.environ["TEMPLATE_DATA_DIR"] = str(Path(_DATA_HOME.name) / "template")  # nor the template's own logs
 HAS_NODE = shutil.which("node") is not None
 PY_CMD = shlex.quote(sys.executable)  # for shell command strings: the path may contain spaces (e.g. "01 project_template/.venv")
 for _var in ("AI_AGENT_NAME", "CLAUDECODE", "GEMINI_CLI", "CURSOR_TRACE_ID", "WINDSURF_SESSION"):
@@ -1468,6 +1469,58 @@ class DataDirOptionTest(unittest.TestCase):
             finally:
                 stack_config._device = original
             self.assertEqual((value, shareable), (str((base / "external" / "b").resolve()), False))
+
+
+class TemplateLoggingTest(unittest.TestCase):
+    """The template's own commands log to `<DATA_DIR>/logs/` with a run id (core rule 12)."""
+
+    def test_init_project_writes_app_log_with_run_id(self) -> None:
+        """`init_project.py` writes start / end lines tagged with one run id; the console stays as before."""
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            target = Path(tmp) / "projects" / "logged_app"
+            res = run(TEMPLATE_ROOT, "scripts/init_project.py", "--target", str(target), "--stack", "generic", "--no-git",
+                      env={"TEMPLATE_DATA_DIR": str(data), "LOG_TO_FILE": "true", "LOG_LEVEL": "INFO"})
+            self.assertEqual(res.returncode, 0, res.stderr)
+            log = (data / "logs" / "app.log").read_text(encoding="utf-8")
+            start = re.search(r"INFO +\[([0-9a-f]{8})\] project_template\.config\.logging_setup:\w+:\d+ - command start init_project", log)
+            self.assertIsNotNone(start, log)
+            run_id = start.group(1) if start else ""
+            self.assertRegex(log, rf"\[{run_id}\] project_template\.entrypoints\.init_cli:\w+:\d+ - created ")
+            self.assertRegex(log, rf"\[{run_id}\] .* - command end init_project exit=0")
+            self.assertNotIn("command start", res.stdout + res.stderr)  # log lines stay out of the console
+
+    def test_failure_goes_to_errors_log_not_console_twice(self) -> None:
+        """A refused init is printed once for the user and recorded in `errors.log`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            target = Path(tmp) / "busy"
+            target.mkdir()
+            (target / "keep.txt").write_text("x", encoding="utf-8")
+            res = run(TEMPLATE_ROOT, "scripts/init_project.py", "--target", str(target), "--stack", "generic", "--no-git",
+                      env={"TEMPLATE_DATA_DIR": str(data), "LOG_TO_FILE": "true"})
+            self.assertEqual(res.returncode, 1)
+            self.assertEqual(res.stderr.count("not empty"), 1, res.stderr)
+            self.assertIn("init refused", (data / "logs" / "errors.log").read_text(encoding="utf-8"))
+
+    def test_data_dir_ignores_inherited_data_dir(self) -> None:
+        """An inherited `DATA_DIR` (e.g. Open WebUI's) never moves the template's logs; `TEMPLATE_DATA_DIR` does."""
+        from project_template.config import settings
+
+        saved = {k: os.environ.get(k) for k in ("TEMPLATE_DATA_DIR", "DATA_DIR")}
+        try:
+            os.environ.pop("TEMPLATE_DATA_DIR")
+            os.environ["DATA_DIR"] = "/somewhere/else"
+            expected = settings.template_dotenv().get("DATA_DIR") or settings.DEFAULT_DATA_DIR
+            self.assertEqual(settings.data_dir(), (TEMPLATE_ROOT / expected).resolve())
+            os.environ["TEMPLATE_DATA_DIR"] = "/tmp/tpl-data"
+            self.assertEqual(settings.data_dir(), Path("/tmp/tpl-data").resolve())
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 class GuardTest(unittest.TestCase):

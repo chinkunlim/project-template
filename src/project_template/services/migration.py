@@ -30,6 +30,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
@@ -37,6 +38,7 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from project_template.config.logging_setup import FILE_ONLY
 from project_template.packs.common import slugify_package_name, write_file
 from project_template.packs.migration_plan import (
     BATCH_TITLES,
@@ -59,6 +61,7 @@ COPY_IGNORE = shutil.ignore_patterns(
     ".env", ".env.*", "*.pem", "*.key", ".clasprc.json", ".pytest_cache", ".mypy_cache", ".ruff_cache",
 )
 TRAILERS = f"Agent: {AGENT}\nCo-Authored-By: {AGENT} <agent+{AGENT}@local>"
+logger = logging.getLogger(__name__)
 
 
 def git(cwd: Path, *args: str, check: bool = True) -> str:
@@ -75,7 +78,11 @@ def git(cwd: Path, *args: str, check: bool = True) -> str:
     Raises:
         RuntimeError: When the command fails and `check` is True.
     """
+    logger.debug("git %s (cwd=%s)", " ".join(args[:3]), cwd)
     res = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        level = logging.ERROR if check else logging.DEBUG
+        logger.log(level, "git %s exit=%s: %s", " ".join(args[:3]), res.returncode, res.stderr.strip()[:300], extra=FILE_ONLY)
     if check and res.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {res.stderr.strip()}")
     return res.stdout.strip()
@@ -159,8 +166,10 @@ def clone_with_history(old: Path, target: Path) -> dict[str, Any]:
         RuntimeError: When the old repository has uncommitted changes or git fails.
     """
     if git(old, "status", "--porcelain"):
+        logger.warning("old project %s has uncommitted changes; migration stopped", old, extra=FILE_ONLY)
         raise RuntimeError("舊專案有未 commit 的修改，請先 commit 或 stash（未 commit 的內容不會被搬過去）。")
     origin = git(old, "remote", "get-url", "origin", check=False)
+    logger.info("git clone %s -> %s", old, target)
     git(target.parent, "clone", "--quiet", "--no-hardlinks", str(old), str(target))
     git(target, "remote", "remove", "origin")
     if origin:
@@ -170,6 +179,8 @@ def clone_with_history(old: Path, target: Path) -> dict[str, Any]:
     (target / "legacy").mkdir()
     for entry in sorted(p.name for p in target.iterdir() if p.name not in (".git", "legacy")):
         git(target, "mv", "-k", entry, f"legacy/{entry}")
+    logger.info("git mv %d entries into legacy/ (cloned at %s, %d data files dropped), committing",
+                len(list((target / "legacy").iterdir())), commit, len(data_paths))
     git(target, "commit", "--no-verify", "-q", "-m", f"chore(migrate): move existing project into legacy/, data excluded [agent:{AGENT}]\n\n{TRAILERS}")
     return {"path": str(old), "origin": origin, "commit": commit, "history": "kept", "data_paths": data_paths}
 
@@ -212,6 +223,7 @@ def copy_without_history(old: Path, target: Path) -> dict[str, Any]:
         p.relative_to(old).as_posix() for p in old.rglob("*")
         if p.is_file() and is_data_path(p.relative_to(old).as_posix()) and not {".git", ".venv", "node_modules"} & set(p.parts)
     )
+    logger.info("copy %s -> %s/legacy (not a git repo root: no history)", old, target)
     shutil.copytree(old, target / "legacy", ignore=lambda folder, names: skip_on_copy(old, Path(folder), names))
     git(target, "init", "-q", "-b", "main")
     return {"path": str(old), "origin": "", "commit": "", "history": "none", "data_paths": data_paths}
@@ -323,6 +335,7 @@ def commit_all(target: Path, message: str) -> None:
     Raises:
         RuntimeError: When the commit fails.
     """
+    logger.info("git commit in %s: %s", target, message)
     git(target, "add", "-A")
     git(target, "commit", "-q", "-m", f"{message} [agent:{AGENT}]\n\n{TRAILERS}")
 
@@ -343,7 +356,9 @@ def migrate(old: Path, target: Path, options: dict[str, Any]) -> int:
         RuntimeError: When git operations fail.
     """
     if target.exists():
+        logger.warning("migrate stopped: target already exists %s", target, extra=FILE_ONLY)
         raise FileExistsError(f"目標資料夾已存在：{target}")
+    logger.info("migrate start %s -> %s options=%s", old, target, options)
     target.parent.mkdir(parents=True, exist_ok=True)
     mode = options.get("mode") or "maintain"
     detected_stack, detected_addons = detect_stack(old, mode)
@@ -366,4 +381,5 @@ def migrate(old: Path, target: Path, options: dict[str, Any]) -> int:
     count = write_plan(target, source)
     subprocess.run([sys.executable, ".agents/bin/update_tree.py"], cwd=target, capture_output=True, check=False)
     commit_all(target, f"chore(migrate): apply project template and migration plan ({count} legacy files)")
+    logger.info("migrate done %s: stack=%s addons=%s mode=%s legacy_files=%d", target, stack, addons, mode, count)
     return count

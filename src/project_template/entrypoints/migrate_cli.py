@@ -18,8 +18,11 @@ import sys
 from pathlib import Path
 
 from project_template.adapters.project_registry import register as register_project
+from project_template.config.logging_setup import FILE_ONLY, run_command
 from project_template.packs.stack_config import ADDON_CHOICES, STACK_CHOICES
 from project_template.services.migration import migrate
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,7 +34,18 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Process exit code.
     """
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    return run_command("migrate_project", _main, argv)
+
+
+def _main(argv: list[str] | None) -> int:
+    """Do the work of `main()` (logging is already set up).
+
+    Args:
+        argv: Arguments to parse; None = `sys.argv[1:]`.
+
+    Returns:
+        Process exit code.
+    """
     parser = argparse.ArgumentParser(description="把舊專案搬進用模板建立的新資料夾（保留 git 歷史，產生遷移計畫）")
     parser.add_argument("--from", dest="old", required=True, help="舊專案資料夾")
     parser.add_argument("--target", required=True, help="新專案資料夾（不可已存在）")
@@ -53,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
                    "data_dir": Path(args.data_dir) if args.data_dir else None}
         count = migrate(old, target, options)
     except (FileExistsError, RuntimeError, subprocess.CalledProcessError) as exc:
+        logger.error("migrate failed %s -> %s: %s", old, target, exc, extra=FILE_ONLY)
         print(f"❌ {exc}", file=sys.stderr)
         return 1
     print(f"✅ 已建立 {target}（{count} 個舊檔案在 legacy/，舊專案未被修改）")

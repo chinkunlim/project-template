@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import logging
 import sys
 import threading
 import webbrowser
@@ -42,10 +43,12 @@ from fastapi.responses import JSONResponse, Response
 from mcp.server.transport_security import TransportSecuritySettings
 
 from project_template.config.framework import FRAMEWORK_VERSION
+from project_template.config.logging_setup import run_command
 from project_template.config.settings import env_value
 from project_template.entrypoints.template_mcp import build_template_mcp
 from project_template.entrypoints.web_routes import ERROR_HANDLERS, operation_id, router
 
+logger = logging.getLogger(__name__)
 DEFAULT_PORT = 8766
 OPEN_WEBUI = "http://127.0.0.1:8080"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -151,6 +154,18 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Process exit code.
     """
+    return run_command("web_ui", _serve, argv)
+
+
+def _serve(argv: list[str] | None) -> int:
+    """Parse the options and run the server until Ctrl+C (logging is already set up).
+
+    Args:
+        argv: Command-line arguments; None = `sys.argv[1:]`.
+
+    Returns:
+        Process exit code.
+    """
     import uvicorn
 
     parser = argparse.ArgumentParser(description="母版的本機網頁、JSON API 與 MCP（只綁 127.0.0.1）")
@@ -163,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"🌐 母版網頁：{url}　MCP：{url}/mcp　API 文件：{url}/docs（Ctrl+C 結束）", file=sys.stderr)
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    logger.info("serving %s allow_host=%s allow_origin=%s", url, args.allow_host, args.allow_origin)
     uvicorn.run(create_app(args.port, args.allow_host, args.allow_origin), host="127.0.0.1", port=args.port, log_level="warning")
     return 0
 

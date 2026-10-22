@@ -5,6 +5,10 @@ All notable changes to **project_template** are documented here
 The template's version is the framework version that projects record in `.agents/framework.lock`.
 
 ## [Unreleased]
+
+### Added
+- feat(logging): template commands log to DATA_DIR/logs with a run id (by `@claude-code`)
+
 ### Changed
 - Session closeout: the agent first updates every Markdown document; `agentctl closeout` lists the project documents this session did not touch, then commits and pushes to the upstream branch (`--no-push` keeps it local).
 

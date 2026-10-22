@@ -123,6 +123,7 @@ project_template/
 │       ├── config/
 │       │   ├── __init__.py
 │       │   ├── framework.py
+│       │   ├── logging_setup.py
 │       │   ├── runtime.py
 │       │   └── settings.py
 │       ├── entrypoints/
@@ -148,6 +149,7 @@ project_template/
 │       │   ├── dx_pack.py
 │       │   ├── evals_pack.py
 │       │   ├── gas_pack.py
+│       │   ├── go_pack.py
 │       │   ├── integrations_pack.py
 │       │   ├── language_packs.py
 │       │   ├── migration_plan.py
@@ -156,6 +158,7 @@ project_template/
 │       │   ├── other_packs.py
 │       │   ├── project_docs.py
 │       │   ├── python_pack.py
+│       │   ├── rust_pack.py
 │       │   ├── stack_config.py
 │       │   └── web_pack.py
 │       ├── services/

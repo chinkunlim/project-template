@@ -29,6 +29,7 @@ from typing import Any
 
 from project_template.adapters import project_registry
 from project_template.config.framework import FRAMEWORK_VERSION, load_catalog, parse_toml
+from project_template.config.logging_setup import set_run_id
 from project_template.config.settings import TEMPLATE_ROOT, child_env
 from project_template.packs.stack_config import (
     ADDON_CHOICES,
@@ -125,30 +126,38 @@ class JobRunner:
             job: The job to run.
             after: Optional completion callback.
         """
+        set_run_id(f"job{job.id}")  # this thread's log lines; each command run logs its own run id
         env = child_env()
         failed = 0
+        logger.info("job %d start %r steps=%d", job.id, job.title, len(job.steps))
         for argv, cwd in job.steps:
             job.log.append(f"$ (cd {shlex.quote(str(cwd))} && {shlex.join(argv)})")
+            logger.info("job %d run %s (cwd=%s)", job.id, shlex.join(argv), cwd)
             with subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
                 for line in proc.stdout or []:
                     job.log.append(line.rstrip("\n"))
                 job.returncode = proc.wait()
+            logger.info("job %d step exit=%s", job.id, job.returncode)
             if job.returncode != 0:
                 job.log.append(f"❌ 結束碼 {job.returncode}")
                 failed += 1
                 if not job.keep_going:
                     job.state = "failed"
+                    logger.warning("job %d failed %r exit=%s", job.id, job.title, job.returncode)
                     return
         if failed:
             job.state = "failed"
+            logger.warning("job %d failed %r: %d of %d steps failed", job.id, job.title, failed, len(job.steps))
             return
         try:
             if after:
                 after(job)
             job.state = "done"
+            logger.info("job %d done %r exit=%s", job.id, job.title, job.returncode)
         except Exception as exc:  # noqa: BLE001 - shown to the user
             job.log.append(f"❌ {exc}")
             job.state = "failed"
+            logger.exception("job %d result step failed %r", job.id, job.title)
 
 
 RUNNER = JobRunner()

@@ -217,6 +217,8 @@ python3 scripts/update_all.py --apply
 python3 scripts/agentctl.py update --from "../01 project_template"
 ```
 
+4. **母版自己的 log**：每個母版指令（`init_project`、`migrate_project`、`update_all`、`collect_feedback`、`sync_github_skills`、網頁、MCP）都寫 log 到母版 `.env` 的 `DATA_DIR`（預設 `../../projects-data/project_template`）下的 `logs/`：`app.log` 是全部（`LOG_LEVEL`，預設 INFO），`errors.log` 只有警告與錯誤。每次執行有一個 run id（例如 `[3f9a1c2e]`），用 `grep 3f9a1c2e app.log` 就能看到那一次做了什麼；網頁背景工作的行標成 `[job3]`。終端機的輸出和以前一樣（log 不印到 stdout，MCP stdio 也不受影響）；`LOG_TO_FILE=false` 可關掉 log 檔。
+
 ---
 
 ## 6. 母版資料夾結構

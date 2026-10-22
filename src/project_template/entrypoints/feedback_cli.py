@@ -18,7 +18,10 @@ import argparse
 import logging
 from pathlib import Path
 
+from project_template.config.logging_setup import run_command
 from project_template.services.feedback import DEFAULT_ROOT, collect
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,7 +33,18 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         0 (the tool only reads).
     """
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    return run_command("collect_feedback", _main, argv)
+
+
+def _main(argv: list[str] | None) -> int:
+    """Do the work of `main()` (logging is already set up).
+
+    Args:
+        argv: Arguments to parse; None = `sys.argv[1:]`.
+
+    Returns:
+        Process exit code.
+    """
     parser = argparse.ArgumentParser(description="彙整所有專案的 docs/TEMPLATE_FEEDBACK.md（只讀，不修改專案）")
     parser.add_argument("roots", nargs="*", help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}＋登記清單）")
     parser.add_argument("--registered", action="store_true", help="指定資料夾時，也加入登記清單中的專案（.local/projects.json）")
@@ -40,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     roots = [Path(r) for r in args.roots] or [DEFAULT_ROOT]
     report = collect(roots, args.depth, args.all, registered=args.registered or not args.roots)
+    logger.info("feedback collected from %s (registered=%s)", roots, args.registered or not args.roots)
     if args.out:
         Path(args.out).expanduser().write_text(report, encoding="utf-8")
         print(f"✅ 已寫入 {args.out}")

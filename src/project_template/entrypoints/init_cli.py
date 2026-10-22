@@ -18,8 +18,11 @@ import sys
 from pathlib import Path
 
 from project_template.adapters.project_registry import register as register_project
+from project_template.config.logging_setup import FILE_ONLY, run_command
 from project_template.packs.stack_config import ADDON_CHOICES, STACK_CHOICES
 from project_template.services.scaffold import DEFAULT_DESCRIPTION, scaffold_project, skill_catalog
+
+logger = logging.getLogger(__name__)
 
 
 def print_skill_list() -> None:
@@ -70,7 +73,18 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         Process exit code.
     """
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    return run_command("init_project", _main, argv)
+
+
+def _main(argv: list[str] | None) -> int:
+    """Do the work of `main()` (logging is already set up).
+
+    Args:
+        argv: Arguments to parse; None = `sys.argv[1:]`.
+
+    Returns:
+        Process exit code.
+    """
     args = parse_args(argv)
     if args.list_skills:
         print_skill_list()
@@ -85,8 +99,10 @@ def main(argv: list[str] | None = None) -> int:
             data_dir=Path(args.data_dir) if args.data_dir else None,
         )
     except (FileExistsError, ValueError) as exc:
+        logger.warning("init refused %s: %s", target_dir, exc, extra=FILE_ONLY)
         print(f"❌ {exc}", file=sys.stderr)
         return 1
+    logger.info("created %s stack=%s addons=%s skills=%s", target_dir, args.stack, args.addons, skills)
     extras = f" + {', '.join(args.addons)}" if args.addons else ""
     print(f"✅ 已建立 '{project_name}' (stack={args.stack}{extras}, skills={', '.join(skills)})：{target_dir}")
     register_project(target_dir, "init")

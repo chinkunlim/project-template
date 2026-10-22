@@ -14,11 +14,14 @@ Purpose:
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from project_template.config.settings import TEMPLATE_ROOT, env_flag, registry_file
+
+logger = logging.getLogger(__name__)
 
 
 def _base() -> Path:
@@ -55,7 +58,8 @@ def load() -> list[dict[str, Any]]:
     try:
         registry = registry_file()
         rows = json.loads(registry.read_text(encoding="utf-8")) if registry.exists() else []
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.warning("registry %s unreadable, treated as empty: %s", registry_file(), exc)
         rows = []
     out = []
     for row in rows:
@@ -85,11 +89,13 @@ def register(path: Path, how: str) -> None:
         how: `init`, `migrate` or `existing`.
     """
     if env_flag("TEMPLATE_NO_REGISTRY"):
+        logger.info("registry skipped (TEMPLATE_NO_REGISTRY) for %s", path)
         return
     rows = [r for r in load() if Path(r["path"]).resolve() != path.resolve()]
     rows.append({"path": str(path.resolve()), "name": path.name, "how": how,
                  "created": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")})
     _save(rows)
+    logger.info("registered %s how=%s in %s", path.resolve(), how, registry_file())
 
 
 def forget(path: str) -> bool:
@@ -105,5 +111,7 @@ def forget(path: str) -> bool:
     kept = [r for r in rows if r["path"] != path]
     if len(kept) != len(rows):
         _save(kept)
+        logger.info("forgot %s (folder not touched)", path)
         return True
+    logger.info("forget: %s was not in the registry", path)
     return False

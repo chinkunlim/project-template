@@ -21,11 +21,15 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from project_template.config.framework import FRAMEWORK_VERSION
+from project_template.config.logging_setup import run_command
 from project_template.services import template_service as ts
+
+logger = logging.getLogger(__name__)
 
 WRITE_COMMANDS = {"doctor-fix", "setup"}
 
@@ -318,6 +322,25 @@ def build_template_mcp() -> Any:
     return server
 
 
-def main() -> None:
-    """Run the template MCP server over stdio (dependencies are ensured by the launcher)."""
+def _serve_stdio(argv: list[str] | None) -> int:
+    """Serve MCP over stdio until the client disconnects.
+
+    Args:
+        argv: Unused (the stdio server takes no options).
+
+    Returns:
+        0 when the client closed the connection.
+    """
     build_template_mcp().run("stdio")
+    return 0
+
+
+def main() -> int:
+    """Run the template MCP server over stdio (dependencies are ensured by the launcher).
+
+    Logs go to `<DATA_DIR>/logs/` and stderr only: stdout is the MCP channel.
+
+    Returns:
+        Process exit code.
+    """
+    return run_command("template_mcp", _serve_stdio, [])

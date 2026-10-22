@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from project_template.adapters import project_registry
+from project_template.config.logging_setup import FILE_ONLY
 from project_template.config.settings import TEMPLATE_ROOT, child_env
 
 logger = logging.getLogger(__name__)
@@ -222,7 +223,24 @@ def preview(project: Path) -> ProjectPlan:
 
 
 def apply(plan: ProjectPlan, commit: bool) -> str:
-    """Update one project, re-activate hooks, check it, and commit when it is safe.
+    """Update one project, re-activate hooks, check it, and commit when it is safe (logs the result).
+
+    Args:
+        plan: The project's preview.
+        commit: Make the local commit when there are no conflicts and the check passes.
+
+    Returns:
+        Status text for the summary table.
+    """
+    logger.info("update start %s v%s -> v%s commit=%s", plan.path, plan.current, plan.target, commit)
+    status = _apply(plan, commit)
+    level = logging.WARNING if status.startswith(("❌", "⚠️")) else logging.INFO
+    logger.log(level, "update result %s: %s", plan.path, status, extra=FILE_ONLY)  # the CLI prints it
+    return status
+
+
+def _apply(plan: ProjectPlan, commit: bool) -> str:
+    """Do the work of `apply()`.
 
     Args:
         plan: The project's preview.
@@ -281,6 +299,7 @@ def classify(plans: list[ProjectPlan]) -> list[ProjectPlan]:
             p.status = "已是最新"
         elif is_dirty(p.path):
             p.status = "⏭️ 略過：有未 commit 的修改，先 commit 再更新"
+            logger.info("update skipped %s: uncommitted changes", p.path)
         else:
             p.status = "可更新" + ("（有衝突，需手動合併）" if p.files["conflict"] else "")
             ready.append(p)
