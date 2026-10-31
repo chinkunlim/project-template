@@ -17,6 +17,7 @@ service-account*.json
 # === On-demand reports (`agentctl graph` / `agentctl audit`); git history is the real record ===
 docs/architecture/GRAPH_REPORT.md
 docs/architecture/AGENT_AUDIT_REPORT.md
+graphify-out/
 
 # === Local conversation records (transcript + summary; delete when the project ends) ===
 .agents/conversations/

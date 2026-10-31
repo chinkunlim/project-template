@@ -6,6 +6,9 @@ The template's version is the framework version that projects record in `.agents
 
 ## [Unreleased]
 
+### Documentation
+- docs: add graphify environment support and gitignore (by `@antigravity`)
+
 ## [3.4.0] - 2026-10-22
 
 ### Added
