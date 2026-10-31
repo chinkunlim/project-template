@@ -88,7 +88,7 @@
 | `code-review-guard` | 寫完或重構程式碼後、commit 前 | `python3 .agents/skills/code-review-guard/scripts/review_guard.py` |
 | `frontend-design` | 建立、美化或審查網頁 UI / 元件時（含視覺品味 Anti-Slop 審查） | `python3 .agents/skills/frontend-design/scripts/frontend_tool.py --check web/（品味：scripts/taste_auditor.py --audit web/）` |
 | `legacy-migration` | 專案有 docs/migration/MIGRATION.md，要繼續或完成舊專案遷移時 | `python3 scripts/agentctl.py migration [--verify]` |
-| `session-closeout` | 使用者說「結束對話 / 收工 / wrap up」時 | `python3 scripts/agentctl.py closeout --agent <name> --goal ... --issues ... --next ...` |
+| `session-closeout` | 使用者說「結束對話 / 收工 / wrap up」時（先更新所有 md，收尾會 commit 並推送到 GitHub） | `python3 scripts/agentctl.py closeout --agent <name> --goal ... --issues ... --next ...` |
 | `tdd-bugfix` | 實作新功能或修 bug 時（先寫失敗測試） | `python3 .agents/skills/tdd-bugfix/scripts/tdd_runner.py` |
 
 詳細步驟：`.agents/skills/<skill>/SKILL.md`
