@@ -15,6 +15,9 @@ The template's version is the framework version that projects record in `.agents
 - docs(issues): record ISSUE-004 on closeout symlink root detection and ISSUE-005 on secret regex negative lookbehind (by `@antigravity`)
 - feat(skills): add project-auditor skill and enhance finish/closeout documentation guards (by `@antigravity`)
 
+### Fixed
+- fix(framework): backport setup_env import hints check and auto_commit missing file staging (by `@antigravity`)
+
 ### Documentation
 - docs: add graphify environment support and gitignore (by `@antigravity`)
 - docs(standards): standardize web app and architecture rules for local AI (by `@antigravity`)
