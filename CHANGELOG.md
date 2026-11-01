@@ -8,6 +8,7 @@ The template's version is the framework version that projects record in `.agents
 
 ### Documentation
 - docs: add graphify environment support and gitignore (by `@antigravity`)
+- docs(standards): standardize web app and architecture rules for local AI (by `@antigravity`)
 
 ### Chore
 - chore: sync agent adapters and project tree (by `@antigravity`)

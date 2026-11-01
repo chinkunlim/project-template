@@ -62,6 +62,7 @@ project_template/
 │   │   ├── catalog.json                    # [Skills 目錄] 各 skill 的分層 (core/stack/optional)、觸發時機與指令
 │   │   └── skills.lock.json
 │   ├── tasks/                              # [任務卡] 建立、接手、交接、完成 (agentctl task)
+│   │   └── TASK-001-skill.json
 │   ├── mcp_config.json                     # [AI 工具] Antigravity 的專案 MCP 設定
 │   └── project.toml                        # [專案設定・各專案自訂] 語言、分層、品質門檻、指令、業務規則
 ├── .cursor/                                # [Agent 轉接] Cursor 規則 (自動產生)
@@ -83,6 +84,7 @@ project_template/
 │   │   ├── 001-template-uses-project-layout.md
 │   │   ├── 002-tracked-projects.md
 │   │   ├── 003-module-logger-required.md
+│   │   ├── 004-global-dual-scope-skills-symlink.md
 │   │   ├── _TEMPLATE.md                    # ADR 範本 (tracker_cli 會套用)
 │   │   └── DECISIONS.md                    # 架構決策總表
 │   ├── architecture/                       # [系統架構與資料模型]
@@ -92,6 +94,8 @@ project_template/
 │   │   ├── 001-preview-desktop-tcc.md
 │   │   ├── 002-unquoted-python-path.md
 │   │   ├── 003-template-release-version.md
+│   │   ├── 004-closeout-symlink-root-detection.md
+│   │   ├── 005-secret-regex-lookbehind-false-positive.md
 │   │   ├── _TEMPLATE.md                    # 已知問題範本 (tracker_cli 會套用)
 │   │   └── KNOWN_ISSUES.md                 # 已知問題總表 (🔴/🟡/🟢)
 │   ├── specs/                              # [功能規格書] PRD / API Contract
