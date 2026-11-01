@@ -12,7 +12,7 @@
 
 | ADR | 標題 | 狀態 | 日期 | 相關程式 |
 |---|---|---|---|---|
-| [ADR-001](001-template-uses-project-layout.md) | 母版本身採用新專案的結構 | Accepted | 2026-10-21 | TODO |
+| [ADR-001](001-template-uses-project-layout.md) | 母版本身採用新專案的結構 | Accepted | 2026-10-21 | `.agents/project.toml`、`src/project_template/`、`scripts/` |
 | [ADR-002](002-tracked-projects.md) | 所有動作作用在同一組追蹤的專案（資料夾＋登記清單） | Accepted | 2026-10-21 | `services/update_all.py`（`tracked_projects`）、`services/template_service.py`、`entrypoints/{web_routes,template_mcp,update_all_cli,feedback_cli,openwebui_tool}.py` |
 | [ADR-003](003-module-logger-required.md) | 每個有函式的程式檔都要建立模組 logger（code-review-guard 強制） | Accepted | 2026-10-22 | `.agents/skills/code-review-guard/scripts/review_guard.py`（`logger_required`）、`.agents/lib/project_config.py`、`packs/stack_config.py`、`packs/*_pack.py` |
 | [ADR-004](004-global-dual-scope-skills-symlink.md) | 全域雙軌 Skills 軟連結映射 (Dual-Scope Global Skills Symlinking) | Accepted | 2026-11-01 | `.agents/skills/*`、`~/.gemini/config/skills/`、`~/.claude/skills/`、`scripts/update_all.py` |

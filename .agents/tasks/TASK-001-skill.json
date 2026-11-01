@@ -1,7 +1,7 @@
 {
   "id": "TASK-001",
   "title": "增強文件守護、新增結案全對話審計Skill並批次同步子專案",
-  "status": "in_progress",
+  "status": "done",
   "agent": "antigravity",
   "handed_off_from": "",
   "handed_off_to": "",
@@ -10,7 +10,7 @@
   "todo_items": "",
   "blockers": "",
   "created_at": "2026-11-01 15:14 UTC",
-  "updated_at": "2026-11-01 15:16 UTC",
+  "updated_at": "2026-11-01 15:29 UTC",
   "history": [
     {
       "timestamp": "2026-11-01 15:14 UTC",
@@ -22,6 +22,13 @@
       "action": "claimed",
       "agent": "antigravity",
       "previous_agent": "antigravity"
+    },
+    {
+      "timestamp": "2026-11-01 15:29 UTC",
+      "action": "done",
+      "agent": "antigravity",
+      "summary": ""
     }
-  ]
+  ],
+  "summary": ""
 }
