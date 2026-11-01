@@ -24,6 +24,7 @@ The template's version is the framework version that projects record in `.agents
 
 ### Chore
 - chore: sync agent adapters and project tree (by `@antigravity`)
+- chore(project): update project tooling and config (by `@antigravity`)
 
 ## [3.4.0] - 2026-10-22
 

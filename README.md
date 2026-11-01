@@ -1,4 +1,4 @@
-# 01 project_template — 新專案母版（v3.2）
+# 01 project_template — 新專案母版（v3.4）
 
 執行一個指令，就為新專案建立**統一的資料夾與文件結構**、AI Agent 規則、交接與溯源紀錄、品質檢查與語言範本。適用情境：**同一時間只有一個 AI Agent 在改程式**，不同 Agent（Claude Code、Gemini/Antigravity、Cursor、Windsurf、Copilot、Codex）或不同對話輪流接手。
 
