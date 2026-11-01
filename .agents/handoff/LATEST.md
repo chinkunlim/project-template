@@ -5,8 +5,8 @@
 <!-- LIVE_STATE_START -->
 ## 📊 即時狀態看板 (Live Snapshot)
 
-- **最後更新時間**: `2026-10-21 13:54 UTC`
-- **最近操作 Agent**: `claude-code`
+- **最後更新時間**: `2026-11-01 14:26 UTC`
+- **最近操作 Agent**: `antigravity`
 
 ### 🎯 進行中 / 待接手任務 (Active & Handed-Off Tasks)
 
@@ -15,6 +15,11 @@
 <!-- LIVE_STATE_END -->
 
 ## 📜 交接與活動時間軸 (Handoff & Activity Timeline)
+
+### [2026-11-01 14:26 UTC] 全域 Skills 雙軌映射就緒、母版多項 Bug 修復並批次升級所有子專案至 Framework v3.4.0 (by `antigravity`)
+- **狀態**: 7 大 Skills（session-closeout、frontend-design、code-review-guard、tdd-bugfix、adr-issue-tracker、api-adapter-scaffold、legacy-migration）已全域軟連結至 `~/.gemini/config/skills/` 與 `~/.claude/skills/`；修復 closeout_runner.py 之 find_root() 與 project_config.py 秘密檢測正則；透過 update_all.py 將所有 5 個子專案推進至 Framework v3.4.0 並完成 agentctl sync 目錄樹與入口檔同步。
+- **未完成 / 待決定**: 無。所有專案 Git 狀態均為 Clean，母版與環境專案已同步推送至 GitHub。
+- **下一步**: 可直接在任何專案隨處調用全域技能或進行後續功能開發。
 
 ### [2026-10-21 15:10 UTC] 所有動作追蹤同一組專案、加入既有專案、git fetch (by `claude-code`)
 - **狀態**: 專案清單、改進建議、框架更新（網頁、API、MCP、Open WebUI 工具檔、`update_all.py` / `collect_feedback.py`）都改用 `tracked_projects()`（資料夾＋登記清單，ADR-002）；新增「加入既有專案」與「git fetch」。完整測試、`TEMPLATE_UV_TESTS=1` 的整合測試與 `agentctl check` 通過，網頁已在瀏覽器預覽實際操作過。
