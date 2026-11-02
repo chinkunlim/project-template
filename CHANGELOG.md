@@ -19,6 +19,7 @@ The template's version is the framework version that projects record in `.agents
 - fix(framework): backport setup_env import hints check and auto_commit missing file staging (by `@antigravity`)
 
 ### Documentation
+- docs: add superpowers plugin and methodology skills to local AI environment (by `@antigravity`)
 - docs: add graphify environment support and gitignore (by `@antigravity`)
 - docs(standards): standardize web app and architecture rules for local AI (by `@antigravity`)
 
