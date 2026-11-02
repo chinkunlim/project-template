@@ -89,6 +89,7 @@ project_template/
 │   │   ├── 002-tracked-projects.md
 │   │   ├── 003-module-logger-required.md
 │   │   ├── 004-global-dual-scope-skills-symlink.md
+│   │   ├── 005-support-global-graphify-and-superpowers.md
 │   │   ├── _TEMPLATE.md                    # ADR 範本 (tracker_cli 會套用)
 │   │   └── DECISIONS.md                    # 架構決策總表
 │   ├── architecture/                       # [系統架構與資料模型]

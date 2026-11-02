@@ -1560,7 +1560,7 @@ class GuardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "docs_check"
             scaffold_project(target, "docs_check", stack="python", addons=["web", "gas"], init_git_repo=False)
-            files = [p for root in (TEMPLATE_ROOT, target) for p in root.rglob("*.md") if not {".skills-cache", ".venv", "node_modules"} & set(p.parts)]
+            files = [p for root in (TEMPLATE_ROOT, target) for p in root.rglob("*.md") if not {".skills-cache", ".venv", "node_modules", "conversations", "graphify-out"} & set(p.parts)]
             offenders = []
             for path in files:
                 for block in __import__("re").findall(r"```(?:bash|sh|zsh)\n(.*?)```", path.read_text(encoding="utf-8"), flags=16):

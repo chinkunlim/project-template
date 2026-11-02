@@ -7,6 +7,7 @@ The template's version is the framework version that projects record in `.agents
 ## [Unreleased]
 
 ### Added
+- docs(adr): record ADR-005 on supporting global graphify and superpowers methodology (by `@antigravity`)
 - feat(skills): add project-auditor skill to audit conversation records, ADRs and known issues completeness before finish (by `@antigravity`)
 - feat(closeout): add document completeness and ADR/Known Issues missing guard in session-closeout (--strict-docs) (by `@antigravity`)
 - feat(tracker): add fast record extraction options (--cause, --fix, --decision, etc.) in tracker_cli.py (by `@antigravity`)
@@ -16,12 +17,14 @@ The template's version is the framework version that projects record in `.agents
 - feat(skills): add project-auditor skill and enhance finish/closeout documentation guards (by `@antigravity`)
 
 ### Fixed
+- fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)
 - fix(framework): backport setup_env import hints check and auto_commit missing file staging (by `@antigravity`)
 
 ### Documentation
 - docs: add superpowers plugin and methodology skills to local AI environment (by `@antigravity`)
 - docs: add graphify environment support and gitignore (by `@antigravity`)
 - docs(standards): standardize web app and architecture rules for local AI (by `@antigravity`)
+- docs(adr/test): update adr/test documentation (ADR-002, ADR-003, ADR-004, ADR-005) (by `@antigravity`)
 
 ### Chore
 - chore: sync agent adapters and project tree (by `@antigravity`)
