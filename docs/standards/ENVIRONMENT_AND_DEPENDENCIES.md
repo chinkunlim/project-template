@@ -184,3 +184,12 @@ chmod 600 ~/.config/<專案>/credentials.json
 | PDF 解析 / 渲染 | PDFKit / Quartz | 依需求選 PyMuPDF 等 |
 | 模型推理加速 | Metal / MPS、Core ML | 純 CPU 推理 |
 | 本機大型模型 | Ollama（`http://127.0.0.1:11434`），呼叫前先過硬體檢查（`--with ollama`） | 雲端 API |
+
+---
+
+## 10. 一鍵安裝與後期平滑更新機制 (One-Click Installation & Lifecycle Updates)
+
+- **一鍵安裝**：專案交付時必須提供一鍵啟動/安裝腳本（例如 `./install.sh` 或 `python3 scripts/agentctl.py setup`），自動完成環境自檢、鎖定相依套件安裝（`uv sync` / `pnpm install`）、`.env` 建立、`DATA_DIR` 子目錄初始化與資料庫遷移。
+- **後期平滑更新**：必須規劃並於 `README.md` 記錄更新程序；更新時嚴禁覆蓋或清空使用者的 `.env` 與 `DATA_DIR` 歷史資料；資料庫結構調整必須相容升級。
+- 詳細規範見 [`docs/standards/env/install_and_update.md`](env/install_and_update.md)。
+
