@@ -155,7 +155,7 @@ my_app/
 │   ├── architecture/         # ARCHITECTURE.md + 目錄樹（依賴圖、溯源報告需要時才產生，不進 git）
 │   └── standards/            # 工程規範（含註解規範）
 ├── scripts/
-│   └── agentctl.py           # 單一入口：status / task / commit / closeout / check / sync / finish / doctor / update …
+│   └── agentctl.py           # 單一入口：status / task / commit / closeout / check / sync / finish / doctor / update / scan …
 │                             # （scripts/ 其餘留給專案自己的腳本）
 ├── src/ tests/ ...           # 語言範本（完整註解、分層、log、可直接跑測試）
 └── web/ gas/ mobile/ alembic/ evals/   # 依 --with 加入，各有說明檔（WEB.md、GAS.md、MOBILE.md、DB.md、EVALS.md）
