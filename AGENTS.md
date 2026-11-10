@@ -41,6 +41,7 @@
 12. **Log 追蹤**：每個有函式的程式檔都要在開頭建立模組 logger（`code-review-guard` 的 `[Logging]` 會擋，設定在 `[quality] require_logger`）；執行的開始與結束、外部呼叫、跳過與重試、例外都要記 log，不記秘密與個資。Python 每個模組用 `logger = logging.getLogger(__name__)`，只有 entrypoints 可 `print`，log 檔在 `DATA_DIR/logs/`，用 run id 追蹤一次執行（見 [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) §0.4）。
 13. **網頁一定要能給 AI 工具用**：使用者要網頁、API，或要讓 Open WebUI / Ollama / 其他 Agent 使用時，先依 [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 的清單確認需求（誰用、哪些動作會改資料、接哪些工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請使用者確認；再一律用 FastAPI（`--with api`），不要做單純的網頁。同一組 `services` 由三個入口呼叫：HTTP 路由（OpenAPI 給 Open WebUI）、MCP 工具（`entrypoints/mcp_server.py`，給 Claude Code、Antigravity、OpenCode、Cursor、Open WebUI）與網頁。新增功能時三個入口一起接；會修改或刪除資料的 MCP 工具要有 `confirm` 參數。
 14. **一鍵安裝與後期平滑更新**：專案到最後必須具備一鍵安裝能力（如 `./install.sh`、`python3 scripts/agentctl.py setup` 或明確的一鍵啟動指令），自動完成套件鎖定安裝（`uv sync` / `pnpm install`）、`.env` 初始化、建立 `DATA_DIR` 目錄與資料庫遷移；同時必須設計並記錄後期的更新方法（如更新指令、資料庫向下相容遷移、保護既有資料與使用者設定不被覆蓋），禁止讓使用者手動除錯或執行繁雜的多步驟流程（見 [`docs/standards/env/install_and_update.md`](docs/standards/env/install_and_update.md)）。
+15. **Code Review 即時修復（零忽視、當下解決）**：執行 `code-review-guard` 或 `agentctl check` 時，若出現任何警告或錯誤（包含註解缺漏、巢狀過深、函式過長、參數過多、跨層依賴、成對呼叫缺失等），**嚴禁忽視、略過或推延至下次，必須立刻重構修正或按規範解決**，確保進入 Git Commit 的程式碼庫永遠維持零違規與最高品質標準（見 [`docs/standards/coding/code_review_zero_tolerance.md`](docs/standards/coding/code_review_zero_tolerance.md)）。
 <!-- RULES_END -->
 
 ## 2.5 Agent 分工（選填，由使用者維護）
@@ -72,7 +73,7 @@
 | 任務情境 | 必讀模組（精確載入） | 禁止載入的不相干文件（節省 Token） |
 |---|---|---|
 | **每次開工 / 接手** | [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)<br>[`handoff/LATEST.md`](.agents/handoff/LATEST.md) | 其餘所有 standards/ |
-| **寫程式碼、重構、加註解** | [`coding/comments.md`](docs/standards/coding/comments.md)<br>[`coding/principles.md`](docs/standards/coding/principles.md) | `web/`、`env/`、`testing/` |
+| **寫程式碼、重構、加註解** | [`coding/comments.md`](docs/standards/coding/comments.md)<br>[`coding/principles.md`](docs/standards/coding/principles.md)<br>[`coding/code_review_zero_tolerance.md`](docs/standards/coding/code_review_zero_tolerance.md) | `web/`、`env/`、`testing/` |
 | **修改或寫入資料** | [`coding/data_guard.md`](docs/standards/coding/data_guard.md) | `web/`、`GIT_AND_VERSIONING.md` |
 | **新增模組 / 分層架構** | [`architecture/layers.md`](docs/standards/architecture/layers.md)<br>[`architecture/workflow_parity.md`](docs/standards/architecture/workflow_parity.md) | `testing/`、`coding/comments.md` |
 | **開發 Web / API / MCP** | [`web/fastapi_mcp.md`](docs/standards/web/fastapi_mcp.md)<br>[`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) | `testing/`、`coding/data_guard.md` |

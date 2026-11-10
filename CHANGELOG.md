@@ -23,6 +23,7 @@ The template's version is the framework version that projects record in `.agents
 - feat(standards): modularize standards into task-based sub-modules and bump framework to v3.5.0 (by `@Antigravity`)
 - feat(standards): add iron rule 14 for one-click install and seamless lifecycle updates (by `@antigravity`)
 - feat(skills): add compliance-scanner skill and agentctl scan command (by `@antigravity`)
+- feat(standards): add iron rule 15 for zero-tolerance immediate code review resolution (by `@antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)

@@ -30,6 +30,7 @@
 | 2026-11-10 | **新對話冷啟動一致性協議**：建立跨 Session 開工必讀機制，確保新開對話第一時間遵守使用者習慣與約束。 | note-studio / feedback #15 | 待決定 |
 | 2026-11-10 | **Closeout 自動沉澱習慣機制**：在 `session-closeout` 流程自動萃取當次對話展現的有效操作與習慣要求。 | note-studio / feedback #16 | 待決定 |
 | 2026-11-10 | **一鍵安裝與後期平滑更新鐵律**：專案到最後必須具備一鍵安裝能力（自動處理鎖定依賴、.env 與 DATA_DIR），且必須規劃並記錄後期更新升級與資料安全保護機制。 | 使用者直接指示 | 已採用 |
+| 2026-11-10 | **Code Review 零忽視與即時修復鐵律**：執行檢查若有問題不要忽略，必須馬上解決，消除技術債，維持零違規提交。 | 使用者直接指示 | 已採用 |
 
 ---
 
@@ -122,4 +123,10 @@
 - **一鍵安裝**：專案交付時必須提供一鍵啟動/安裝腳本（如 `./install.sh` 或 `python3 scripts/agentctl.py setup`），自動完成環境自檢、鎖定相依套件安裝（`uv sync` / `pnpm install`）、`.env` 建立、`DATA_DIR` 初始化與資料庫遷移。
 - **後期平滑更新**：必須規劃並於 `README.md` 記錄更新程序；更新時嚴禁覆蓋或清空使用者的 `.env` 與 `DATA_DIR` 歷史資料；資料庫結構調整必須相容升級。
 - **母版落地**：已正式收錄為 `AGENTS.md` 核心規則第 14 條與 `docs/standards/env/install_and_update.md`。
+
+### 18. Code Review 零忽視與即時修復鐵律
+- **零忽視原則**：收到 code-review-guard 或 agentctl check 的警告時，嚴禁略過或推延，必須就地重構修復完畢。
+- **重構手法**：使用 Early Return 扁平化巢狀過深、拆分函式過長、封裝 DTO 解決參數過多、補齊模組 logger 與標準 Google/Sphinx 註解。
+- **母版落地**：已正式收錄為 `AGENTS.md` 核心規則第 15 條與 `docs/standards/coding/code_review_zero_tolerance.md`。
+
 
