@@ -65,18 +65,21 @@
 
 **命名規則**：整個專案只有根目錄一份 `README.md`；每個 `docs/` 子資料夾用全大寫的說明/總表檔（如 `KNOWN_ISSUES.md`），新增紀錄時照同資料夾的 `_TEMPLATE.md` 格式寫。
 
-## 4. 規範文件（需要時再讀）
+## 4. 規範文件（漸進揭露：按任務精確載入，禁止無腦全讀）
 
-| 文件 | 何時讀 |
-|---|---|
-| [`CODING_PRINCIPLES.md`](docs/standards/CODING_PRINCIPLES.md) | 寫或重構程式前（含註解規範） |
-| [`ARCHITECTURE_RULES.md`](docs/standards/ARCHITECTURE_RULES.md) | 新增模組、調整 import 或分層時 |
-| [`MULTI_AGENT_COLLABORATION.md`](docs/standards/MULTI_AGENT_COLLABORATION.md) | 接手、交接、收尾時 |
-| [`TESTING_AND_QUALITY.md`](docs/standards/TESTING_AND_QUALITY.md) | 寫測試、錯誤處理時 |
-| [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md) | commit、發版時 |
-| [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) | 使用者要網頁 / API / 給 AI 工具用、要接 Ollama 或 Open WebUI、排除 AI 工具連線問題時（這台電腦的 AI 工具、埠號、需求確認清單） |
-| [`ENVIRONMENT_AND_DEPENDENCIES.md`](docs/standards/ENVIRONMENT_AND_DEPENDENCIES.md) | 安裝/移除套件、執行工具、設定本機服務前（uv、pnpm、Brewfile、DATA_DIR、127.0.0.1） |
-| [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md) | **每次開工都讀**：本專案特有的規則（領域知識、例外、禁忌） |
+| 任務情境 | 必讀模組（精確載入） | 禁止載入的不相干文件（節省 Token） |
+|---|---|---|
+| **每次開工 / 接手** | [`PROJECT_RULES.md`](docs/standards/PROJECT_RULES.md)<br>[`handoff/LATEST.md`](.agents/handoff/LATEST.md) | 其餘所有 standards/ |
+| **寫程式碼、重構、加註解** | [`coding/comments.md`](docs/standards/coding/comments.md)<br>[`coding/principles.md`](docs/standards/coding/principles.md) | `web/`、`env/`、`testing/` |
+| **修改或寫入資料** | [`coding/data_guard.md`](docs/standards/coding/data_guard.md) | `web/`、`GIT_AND_VERSIONING.md` |
+| **新增模組 / 分層架構** | [`architecture/layers.md`](docs/standards/architecture/layers.md)<br>[`architecture/workflow_parity.md`](docs/standards/architecture/workflow_parity.md) | `testing/`、`coding/comments.md` |
+| **開發 Web / API / MCP** | [`web/fastapi_mcp.md`](docs/standards/web/fastapi_mcp.md)<br>[`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) | `testing/`、`coding/data_guard.md` |
+| **UI 介面設計 / 視覺風格** | [`web/taste_design.md`](docs/standards/web/taste_design.md) | `architecture/`、`testing/` |
+| **寫測試、虛擬測試** | [`testing/virtual_testing.md`](docs/standards/testing/virtual_testing.md)<br>[`testing/empirical_evidence.md`](docs/standards/testing/empirical_evidence.md) | `web/`、`coding/data_guard.md` |
+| **環境、依賴、DATA_DIR** | [`env/data_dir_layout.md`](docs/standards/env/data_dir_layout.md)<br>[`env/icloud_rules.md`](docs/standards/env/icloud_rules.md) | `architecture/`、`testing/` |
+| **Git commit、交接、收工** | [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)<br>[`MULTI_AGENT_COLLABORATION.md`](docs/standards/MULTI_AGENT_COLLABORATION.md) | `coding/`、`architecture/` |
+
+> 完整標準全集總目錄：[`docs/standards/STANDARDS.md`](docs/standards/STANDARDS.md)（含所有主題的完整連結與全集單一檔案）
 
 ## 5. 可用 Skills
 

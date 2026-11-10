@@ -7,6 +7,10 @@ The template's version is the framework version that projects record in `.agents
 ## [Unreleased]
 
 ### Added
+- feat(standards): implement Progressive Disclosure standards modularization into 10 task-focused sub-modules (by `@Antigravity`)
+- feat(agents): rewrite AGENTS.md §4 with task-based progressive routing table to prevent token bloat (by `@Antigravity`)
+- feat(graphify): add .graphifyignore to template framework files to eliminate 3rd-party noise (by `@Antigravity`)
+- feat(frontend): add Step 0 Prerequisite Mockup Gate with audience psychology and Figma thinking (by `@Antigravity`)
 - docs(adr): record ADR-005 on supporting global graphify and superpowers methodology (by `@antigravity`)
 - feat(skills): add project-auditor skill to audit conversation records, ADRs and known issues completeness before finish (by `@antigravity`)
 - feat(closeout): add document completeness and ADR/Known Issues missing guard in session-closeout (--strict-docs) (by `@antigravity`)
@@ -16,6 +20,7 @@ The template's version is the framework version that projects record in `.agents
 - docs(issues): record ISSUE-004 on closeout symlink root detection and ISSUE-005 on secret regex negative lookbehind (by `@antigravity`)
 - feat(skills): add project-auditor skill and enhance finish/closeout documentation guards (by `@antigravity`)
 - feat(standards): integrate user habits, empirical verification, data mutation guard and closeout habits extraction (by `@Antigravity`)
+- feat(standards): modularize standards into task-based sub-modules and bump framework to v3.5.0 (by `@Antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)
