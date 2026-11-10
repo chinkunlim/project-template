@@ -15,6 +15,7 @@ The template's version is the framework version that projects record in `.agents
 - docs(adr): record ADR-004 on dual-scope global skills symlinks (by `@antigravity`)
 - docs(issues): record ISSUE-004 on closeout symlink root detection and ISSUE-005 on secret regex negative lookbehind (by `@antigravity`)
 - feat(skills): add project-auditor skill and enhance finish/closeout documentation guards (by `@antigravity`)
+- feat(standards): integrate user habits, empirical verification, data mutation guard and closeout habits extraction (by `@Antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)
