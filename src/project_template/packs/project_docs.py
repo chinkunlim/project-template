@@ -40,6 +40,7 @@ AGENTS_TEMPLATE = """# AGENTS.md — {project_name}
 | 「推上去」 | 先列出未推送的 commit 並**確認**，同意後才 `agentctl commit --push` |
 | 「出版本」「專案完成了」 | `python3 scripts/agentctl.py finish`（驗收清單）；要發布再加 `--tag`（Unreleased → 新版本 + 本機 tag） |
 | 「做一個網頁」「給 Open WebUI / Ollama / Agent 用」 | **先依 [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 確認需求**並請使用者確認摘要，再做 FastAPI + MCP（核心規則 13）；專案沒有 `api` 時先問使用者 |
+| 「架構合規嗎」「檢查架構」「專案健檢」「全面掃描」「有沒有更新」 | `python3 scripts/agentctl.py scan` |
 | 「環境怪怪的」「換電腦了」 | `python3 scripts/agentctl.py doctor --fix` |
 
 ## 2. 核心規則（必須遵守）
