@@ -31,6 +31,7 @@ The template's version is the framework version that projects record in `.agents
 - docs: add graphify environment support and gitignore (by `@antigravity`)
 - docs(standards): standardize web app and architecture rules for local AI (by `@antigravity`)
 - docs(adr/test): update adr/test documentation (ADR-002, ADR-003, ADR-004, ADR-005) (by `@antigravity`)
+- docs(standards): eliminate duplicate entry and generalize layout terms (by `@antigravity`)
 
 ### Chore
 - chore: sync agent adapters and project tree (by `@antigravity`)
