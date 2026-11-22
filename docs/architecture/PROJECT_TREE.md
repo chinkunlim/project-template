@@ -142,6 +142,7 @@ project_template/
 │   │   ├── PROJECT_RULES.md
 │   │   ├── STANDARDS.md
 │   │   └── TESTING_AND_QUALITY.md          # 測試金字塔與 DoD 驗收清單
+│   ├── FEEDBACK_BACKLOG.md
 │   └── TEMPLATE_FEEDBACK.md
 ├── scripts/                                # 【專案腳本】agentctl.py 是框架的單一入口；其餘放本專案自己的腳本
 │   ├── agentctl.py                         # [單一入口] 轉呼叫 .agents/bin/agentctl.py
