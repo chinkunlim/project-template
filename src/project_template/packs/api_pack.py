@@ -21,6 +21,13 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from project_template.packs.api_extras_pack import (
+    NO_CACHE_STATIC_CLASS,
+    PORT_CHECK_PY,
+    build_middleware_module,
+    build_port_check_test,
+    build_web_contracts_test,
+)
 from project_template.packs.common import write_file as _write
 from project_template.packs.integrations_pack import scaffold_integrations
 
@@ -72,7 +79,7 @@ from __future__ import annotations
 {imports}
 
 logger = logging.getLogger(__name__)
-{web_const}
+{web_const}{no_cache_class}
 
 def operation_id(route: APIRoute) -> str:
     """Use the route function's name as its OpenAPI operationId (clean tool names for AI tools).
@@ -105,7 +112,7 @@ def create_app(config: AppConfig{factory_param}) -> FastAPI:
     )
     add_request_logging(app)
     add_local_only_guard(app, config)
-    app.include_router(build_greeting_router(config{factory_arg}))
+{db_scope_init}    app.include_router(build_greeting_router(config{router_arg}))
 {history_include}    app.router.routes.extend(mcp_http_routes(mcp, config))  # before the static catch-all below
 {web_mount}    logger.info("app created env=%s", config.app_env)
     return app
@@ -149,12 +156,12 @@ def build_greeting_router(config: AppConfig{factory_param_required}) -> APIRoute
 
 HISTORY_ROUTER = '''
 
-def build_history_router(config: AppConfig, factory: sessionmaker[Session]) -> APIRouter:
+def build_history_router(config: AppConfig, request_session: scoped_session[Session]) -> APIRouter:
     """Create the route that lists stored greetings.
 
     Args:
         config: Application settings.
-        factory: Database session factory.
+        request_session: Request-scoped database session registry.
 
     Returns:
         Router with `GET /greetings`.
@@ -168,128 +175,10 @@ def build_history_router(config: AppConfig, factory: sessionmaker[Session]) -> A
         Returns:
             Greetings, newest first.
         """
-        with session_scope(factory) as session:
-            rows = GreetingRepository(session).recent(environment=config.app_env)
+        rows = GreetingRepository(request_session()).recent(environment=config.app_env)
         return [GreetingOut(message=r.message, environment=r.environment) for r in rows]
 
     return router
-'''
-
-MIDDLEWARE_PY = '''\"\"\"HTTP middleware: local-only guard, CORS for AI tools, and request logging.
-
-- Local only (DNS-rebinding and CSRF guard): the Host must be 127.0.0.1 / localhost (plus
-  `HTTP_ALLOWED_HOSTS`, e.g. host.docker.internal for Open WebUI in Docker), and a request that
-  changes something from a web page must come from this app or from `HTTP_ALLOWED_ORIGINS`
-  (default: Open WebUI at http://127.0.0.1:8080, whose tool servers call the API from the browser).
-  Programs that do not send an `Origin` (agents, curl, the Open WebUI backend) are allowed.
-- Request id: every log line of one request carries its id (`X-Request-ID`), plus one access line
-  per request (method, path, status, duration), so a report can be matched with `grep <id> app.log`.
-\"\"\"
-
-from __future__ import annotations
-
-import logging
-import time
-from collections.abc import Awaitable, Callable
-
-from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-from {pkg}.config.logging_setup import new_run_id, reset_run_id, set_run_id
-from {pkg}.config.settings import AppConfig
-
-logger = logging.getLogger(__name__)
-SAFE_METHODS = {{"GET", "HEAD", "OPTIONS"}}
-
-
-def local_hosts(config: AppConfig) -> list[str]:
-    \"\"\"Host names this app answers to.
-
-    Args:
-        config: Application settings.
-
-    Returns:
-        127.0.0.1, localhost and `HTTP_ALLOWED_HOSTS`.
-    \"\"\"
-    return ["127.0.0.1", "localhost", *config.http_allowed_hosts]
-
-
-def add_local_only_guard(app: FastAPI, config: AppConfig) -> None:
-    \"\"\"Refuse foreign Host headers and state changes from foreign web pages; allow CORS for AI tools.
-
-    Args:
-        app: Application to protect.
-        config: Application settings (port, extra hosts and origins).
-    \"\"\"
-    names = [h.lower() for h in local_hosts(config)]
-    hosts = {{*names, *(f"{{h}}:{{config.http_port}}" for h in names)}}
-    origins = {{f"http://{{h}}:{{config.http_port}}" for h in ("127.0.0.1", "localhost")}}
-    origins |= set(config.http_allowed_origins)
-
-    @app.middleware("http")
-    async def local_only(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        \"\"\"Check Host and Origin before handling the request.
-
-        Args:
-            request: Incoming request.
-            call_next: The rest of the application.
-
-        Returns:
-            The response, or 403 for a request that is not local.
-        \"\"\"
-        host = (request.headers.get("host") or "").lower()
-        origin = request.headers.get("origin")
-        if host not in hosts or (request.method not in SAFE_METHODS and origin and origin not in origins):
-            logger.warning("refused host=%s origin=%s %s %s", host, origin, request.method, request.url.path)
-            return JSONResponse({{"detail": "only local requests are allowed"}}, status_code=403)
-        return await call_next(request)
-
-    if config.http_allowed_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=list(config.http_allowed_origins),
-            allow_methods=["*"],
-            allow_headers=["*"],
-            expose_headers=["X-Request-ID", "Mcp-Session-Id"],
-        )
-
-
-def add_request_logging(app: FastAPI) -> None:
-    \"\"\"Install the request-logging middleware.
-
-    Args:
-        app: Application to wrap.
-    \"\"\"
-
-    @app.middleware("http")
-    async def log_request(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        \"\"\"Tag the request with an id, log its result and duration, and log failures with traceback.
-
-        Args:
-            request: Incoming request.
-            call_next: The rest of the application.
-
-        Returns:
-            The response, with an `X-Request-ID` header.
-        \"\"\"
-        request_id = request.headers.get("X-Request-ID") or new_run_id()
-        token = set_run_id(request_id)
-        start = time.perf_counter()
-        try:
-            response = await call_next(request)
-        except Exception:
-            ms = (time.perf_counter() - start) * 1000
-            logger.exception("%s %s failed after %.1f ms", request.method, request.url.path, ms)
-            raise
-        finally:
-            reset_run_id(token)
-        level = logging.WARNING if response.status_code >= 400 else logging.INFO
-        ms = (time.perf_counter() - start) * 1000
-        path, status = request.url.path, response.status_code
-        logger.log(level, "[%s] %s %s -> %s (%.1f ms)", request_id, request.method, path, status, ms)
-        response.headers["X-Request-ID"] = request_id
-        return response
 '''
 
 MCP_PY = '''"""MCP server: the same features as the HTTP API, for AI agents.
@@ -421,12 +310,14 @@ SERVER_PY = '''"""HTTP server entrypoint: `uv run {dist}-server` (listens on 127
 from __future__ import annotations
 
 import logging
+import sys
 
 import uvicorn
 
 from {pkg}.config.logging_setup import setup_logging
 from {pkg}.config.settings import load_config
 from {pkg}.entrypoints.http.app import create_app
+from {pkg}.entrypoints.http.port_check import busy_port_message, port_is_free
 
 logger = logging.getLogger(__name__)
 
@@ -435,6 +326,11 @@ def main() -> None:
     """Start uvicorn on `HTTP_HOST` / `HTTP_PORT` from `.env` (default 127.0.0.1:8000)."""
     config = load_config()
     setup_logging(config.log_level, config.logs_dir if config.log_to_file else None)
+    if not port_is_free(config.http_host, config.http_port):
+        msg = busy_port_message(config.http_host, config.http_port, "{name}")
+        logger.error(msg)
+        print(msg, file=sys.stderr)
+        raise SystemExit(1)
     logger.info("server starting http://%s:%s", config.http_host, config.http_port)
     # log_config=None: uvicorn's own messages go through our handlers and format (run id, files)
     uvicorn.run(create_app(config), host=config.http_host, port=config.http_port, log_config=None)
@@ -499,7 +395,14 @@ class ApiTest(unittest.TestCase):
             res = self.client.get("/health", headers={{"X-Request-ID": "trace-1"}})
         self.assertEqual(res.headers["X-Request-ID"], "trace-1")
         self.assertIn("GET /health -> 200", logs.output[0])
-{db_test}
+
+    def test_safe_resolve_under_blocks_traversal(self) -> None:
+        """Download paths escaping their base directory via `..` are rejected."""
+        base = Path(__file__).resolve().parent
+        self.assertEqual(safe_resolve_under(base, "test_api.py"), base / "test_api.py")
+        with self.assertRaises(ValueError):
+            safe_resolve_under(base, "../pyproject.toml")
+{web_test}{db_test}
 
 if __name__ == "__main__":
     unittest.main()
@@ -543,6 +446,13 @@ DB_API_TEST = '''
         """A created greeting appears in `GET /greetings`."""
         self.client.post("/greetings", json={"user_name": "Bob"})
         self.assertEqual([g["message"] for g in self.client.get("/greetings").json()], ["Hello, Bob!"])
+'''
+
+WEB_API_TEST = '''
+    def test_static_files_send_no_cache(self) -> None:
+        """Static UI assets return `Cache-Control: no-cache` so browsers always revalidate."""
+        res = self.client.get("/styles.css")
+        self.assertEqual((res.status_code, res.headers.get("cache-control")), (200, "no-cache"))
 '''
 
 API_GUIDE = """# HTTP API（FastAPI）
@@ -589,6 +499,80 @@ def import_block(stdlib: list[str], third_party: list[str], first_party: list[st
     return "\n\n".join("\n".join(g) for g in groups)
 
 
+def _app_imports(pkg: str, with_db: bool, with_web: bool) -> str:
+    """Build the sorted import block for `entrypoints/http/app.py`.
+
+    Args:
+        pkg: Python package name.
+        with_db: Include SQLAlchemy and repository imports.
+        with_web: Include `StaticFiles`, `Response`, `Path` and `Any` imports.
+
+    Returns:
+        Sorted import block formatted for ruff/isort.
+    """
+    stdlib = ["import logging", *(["from pathlib import Path", "from typing import Any"] if with_web else [])]
+    mw_line = (
+        f"from {pkg}.entrypoints.http.middleware import (\n"
+        "    add_db_session_scope,\n"
+        "    add_local_only_guard,\n"
+        "    add_request_logging,\n"
+        ")"
+        if with_db
+        else f"from {pkg}.entrypoints.http.middleware import add_local_only_guard, add_request_logging"
+    )
+    first = [
+        f"from {pkg}.config.settings import AppConfig",
+        f"from {pkg}.domain.models import GreetingRequest",
+        mw_line,
+        f"from {pkg}.entrypoints.http.schemas import GreetingIn, GreetingOut",
+        f"from {pkg}.entrypoints.mcp_server import build_mcp_server, mcp_http_routes, mcp_lifespan",
+        f"from {pkg}.services.greeting import create_greeting",
+    ]
+    third = ["from fastapi import APIRouter, FastAPI", "from fastapi.routing import APIRoute"]
+    if with_web:
+        third += ["from fastapi.responses import Response", "from fastapi.staticfiles import StaticFiles"]
+    if with_db:
+        third.append("from sqlalchemy.orm import Session, scoped_session, sessionmaker")
+        first += [
+            f"from {pkg}.adapters.db.repository import GreetingRepository",
+            f"from {pkg}.adapters.db.session import create_db_engine, make_request_scoped_session, make_session_factory",
+        ]
+    return import_block(stdlib, third, first)
+
+
+def _app_db_kwargs(with_db: bool) -> dict[str, str]:
+    """Build template format substitutions specific to `--with db` in `app.py`.
+
+    Args:
+        with_db: Whether database support is enabled.
+
+    Returns:
+        Substitution dictionary for `APP_HEADER.format()`.
+    """
+    if not with_db:
+        return {k: "" for k in ("test_doc", "factory_param", "factory_doc", "factory_init", "factory_arg", "router_arg", "db_scope_init", "factory_param_required", "factory_doc_required", "history_include", "save_doc", "save_code", "history_router")}
+    return {
+        "test_doc": "\nand an in-memory database session factory",
+        "factory_param": ", session_factory: sessionmaker[Session] | None = None",
+        "factory_doc": "\n        session_factory: Database session factory; created from `config.database_url` when omitted.",
+        "factory_init": (
+            "    factory = session_factory or make_session_factory(create_db_engine(config.database_url))\n"
+            "    scoped_registries: list[scoped_session[Session]] = []\n"
+            "    request_session = make_request_scoped_session(factory)\n"
+            "    scoped_registries.append(request_session)\n"
+        ),
+        "factory_arg": ", factory",
+        "router_arg": ", request_session",
+        "db_scope_init": "    add_db_session_scope(app, scoped_registries)\n    app.state.db_scoped_registries = scoped_registries\n",
+        "factory_param_required": ", request_session: scoped_session[Session]",
+        "factory_doc_required": "\n        request_session: Request-scoped database session registry.",
+        "history_include": "    app.include_router(build_history_router(config, request_session))\n",
+        "save_doc": " and store it",
+        "save_code": "        session = request_session()\n        GreetingRepository(session).add(body.user_name, result)\n        session.commit()\n",
+        "history_router": HISTORY_ROUTER,
+    }
+
+
 def build_app_module(pkg: str, name: str, with_db: bool, with_web: bool) -> str:
     """Render `entrypoints/http/app.py` for the chosen add-ons.
 
@@ -596,50 +580,20 @@ def build_app_module(pkg: str, name: str, with_db: bool, with_web: bool) -> str:
         pkg: Python package name.
         name: Project name (API title).
         with_db: Store and list greetings through the database repository.
-        with_web: Serve the `web/` folder as static files.
+        with_web: Serve the `web/` folder as static files with no-cache headers.
 
     Returns:
         Python source text.
     """
-    first = [
-        f"from {pkg}.config.settings import AppConfig",
-        f"from {pkg}.domain.models import GreetingRequest",
-        f"from {pkg}.entrypoints.http.middleware import add_local_only_guard, add_request_logging",
-        f"from {pkg}.entrypoints.mcp_server import build_mcp_server, mcp_http_routes, mcp_lifespan",
-        f"from {pkg}.entrypoints.http.schemas import GreetingIn, GreetingOut",
-        f"from {pkg}.services.greeting import create_greeting",
-    ]
-    third = ["from fastapi import APIRouter, FastAPI", "from fastapi.routing import APIRoute"]
-    third += ["from fastapi.staticfiles import StaticFiles"] if with_web else []
-    if with_db:
-        third.append("from sqlalchemy.orm import Session, sessionmaker")
-        first += [
-            f"from {pkg}.adapters.db.repository import GreetingRepository",
-            f"from {pkg}.adapters.db.session import create_db_engine, make_session_factory, session_scope",
-        ]
+    web_mount = '    if WEB_DIR.is_dir():\n        app.mount("/", NoCacheStaticFiles(directory=WEB_DIR, html=True), name="web")\n' if with_web else ""
     return APP_HEADER.format(
         name=name,
         extra_doc=(", database-backed history" if with_db else "") + (" and the static `web/` front end" if with_web else ""),
-        test_doc="\nand an in-memory database session factory" if with_db else "",
-        imports=import_block(["import logging", *(["from pathlib import Path"] if with_web else [])], third, first),
+        imports=_app_imports(pkg, with_db, with_web),
         web_const='\nWEB_DIR = Path(__file__).resolve().parents[4] / "web"\n' if with_web else "",
-        factory_param=", session_factory: sessionmaker[Session] | None = None" if with_db else "",
-        factory_doc="\n        session_factory: Database session factory; created from `config.database_url` when omitted." if with_db else "",
-        factory_init="    factory = session_factory or make_session_factory(create_db_engine(config.database_url))\n" if with_db else "",
-        factory_arg=", factory" if with_db else "",
-        factory_param_required=", factory: sessionmaker[Session]" if with_db else "",
-        factory_doc_required="\n        factory: Database session factory." if with_db else "",
-        history_include="    app.include_router(build_history_router(config, factory))\n" if with_db else "",
-        web_mount=(
-            "    if WEB_DIR.is_dir():\n"
-            '        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")\n'
-        ) if with_web else "",
-        save_doc=" and store it" if with_db else "",
-        save_code=(
-            "        with session_scope(factory) as session:\n"
-            "            GreetingRepository(session).add(body.user_name, result)\n"
-        ) if with_db else "",
-        history_router=HISTORY_ROUTER if with_db else "",
+        no_cache_class=NO_CACHE_STATIC_CLASS if with_web else "",
+        web_mount=web_mount,
+        **_app_db_kwargs(with_db),
     )
 
 
@@ -708,17 +662,22 @@ def build_mcp_test(pkg: str, with_db: bool) -> str:
     )
 
 
-def build_api_test(pkg: str, with_db: bool) -> str:
+def build_api_test(pkg: str, with_db: bool, with_web: bool = False) -> str:
     """Render `tests/test_api.py`.
 
     Args:
         pkg: Python package name.
         with_db: Include the stored-greeting test with an in-memory database.
+        with_web: Include `Cache-Control: no-cache` verification on static UI files.
 
     Returns:
         Python source text.
     """
-    first = [f"from {pkg}.config.settings import AppConfig", f"from {pkg}.entrypoints.http.app import create_app"]
+    first = [
+        f"from {pkg}.config.settings import AppConfig",
+        f"from {pkg}.entrypoints.http.app import create_app",
+        f"from {pkg}.entrypoints.http.middleware import safe_resolve_under",
+    ]
     if with_db:
         first += [
             f"from {pkg}.adapters.db.base import Base",
@@ -726,13 +685,14 @@ def build_api_test(pkg: str, with_db: bool) -> str:
         ]
     return API_TEST.format(
         pkg=pkg,
-        imports=import_block(["import unittest"], ["from fastapi.testclient import TestClient"], first),
+        imports=import_block(["import unittest", "from pathlib import Path"], ["from fastapi.testclient import TestClient"], first),
         db_doc=" and an in-memory database" if with_db else "",
         db_setup=(
             '        engine = create_db_engine("sqlite://")\n'
             "        Base.metadata.create_all(engine)\n"
         ) if with_db else "",
         factory_arg=", make_session_factory(engine)" if with_db else "",
+        web_test=WEB_API_TEST if with_web else "",
         db_test=DB_API_TEST if with_db else "",
     )
 
@@ -747,14 +707,19 @@ def scaffold_api_pack(target_dir: Path, pkg: str, names: dict[str, str], addons:
         addons: Project add-ons (`db` and `web` change the generated app).
     """
     logger.debug("scaffold api_pack in %s", target_dir)
+    with_db, with_web = "db" in addons, "web" in addons
     http = target_dir / "src" / pkg / "entrypoints" / "http"
     _write(http / "__init__.py", '"""HTTP entrypoints (FastAPI)."""\n')
     _write(http / "schemas.py", SCHEMAS_PY)
-    _write(http / "app.py", build_app_module(pkg, names["project"], "db" in addons, "web" in addons))
-    _write(http / "server.py", SERVER_PY.format(pkg=pkg, dist=names["dist"]))
-    _write(http / "middleware.py", MIDDLEWARE_PY.format(pkg=pkg))
-    _write(target_dir / "src" / pkg / "entrypoints" / "mcp_server.py", build_mcp_module(pkg, names, "db" in addons))
-    _write(target_dir / "tests" / "test_mcp.py", build_mcp_test(pkg, "db" in addons))
+    _write(http / "app.py", build_app_module(pkg, names["project"], with_db, with_web))
+    _write(http / "server.py", SERVER_PY.format(pkg=pkg, dist=names["dist"], name=names["project"]))
+    _write(http / "middleware.py", build_middleware_module(pkg, with_db))
+    _write(http / "port_check.py", PORT_CHECK_PY)
+    _write(target_dir / "src" / pkg / "entrypoints" / "mcp_server.py", build_mcp_module(pkg, names, with_db))
+    _write(target_dir / "tests" / "test_mcp.py", build_mcp_test(pkg, with_db))
     _write(http / "API.md", API_GUIDE.format(dist=names["dist"]))
     scaffold_integrations(target_dir, names)
-    _write(target_dir / "tests" / "test_api.py", build_api_test(pkg, "db" in addons))
+    _write(target_dir / "tests" / "test_api.py", build_api_test(pkg, with_db, with_web))
+    _write(target_dir / "tests" / "test_port_check.py", build_port_check_test(pkg, names["project"]))
+    if with_web:
+        _write(target_dir / "tests" / "test_web_contracts.py", build_web_contracts_test(pkg, True, with_db))

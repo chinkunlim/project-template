@@ -58,6 +58,9 @@ STYLES_CSS = """/*
   --space: 1rem;
   --radius: 10px;
   --font: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+  --dur-hover: 140ms;
+  --dur-slide: 240ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 * { box-sizing: border-box; }
@@ -91,9 +94,40 @@ button {
   color: #fff;
   background: var(--color-accent);
   cursor: pointer;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+
+button:hover { opacity: 0.9; }
+
+.offline-banner {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 100;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: #8c1d18;
+  color: #fff;
 }
 
 .muted { color: var(--color-muted); }
+
+@media (pointer: coarse) {
+  button, input, select, textarea, a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
 """
 
 LOGGER_JS = """/**
@@ -152,9 +186,11 @@ export function createLogger(name) {
 APP_JS = """/**
  * @file Front-end logic: renders the four standard UI states (loading, empty, error, data).
  */
+import { createEventBus } from "./api_client.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("app");
+const bus = createEventBus();
 const container = document.getElementById("app");
 
 /**
@@ -175,7 +211,7 @@ function render(state, payload = {}) {
 }
 
 /**
- * Load data and render it (replace the sample data with a fetch() call to your API).
+ * Load data and render it (replace the sample data with apiFetch() to your API).
  * @returns {Promise<void>}
  */
 async function load() {
@@ -183,6 +219,7 @@ async function load() {
   try {
     const items = ["範例資料 A", "範例資料 B"];
     render(items.length ? "data" : "empty", { items });
+    bus.emit("items:loaded", { count: items.length });
     logger.info(`loaded items=${items.length}`);
   } catch (error) {
     logger.error("load failed", error);
@@ -194,10 +231,108 @@ document.getElementById("refresh")?.addEventListener("click", load);
 load();
 """
 
+API_CLIENT_JS = """/**
+ * @file Zero-build Vanilla JS helpers: read-only retrying fetch, EventBus and StateStore.
+ */
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("api_client");
+
+/**
+ * Show or hide the offline banner when the local server stops responding.
+ * @param {boolean} show True to display `#offlineBanner`.
+ * @returns {void}
+ */
+export function setOfflineBanner(show) {
+  let bar = document.getElementById("offlineBanner");
+  if (!bar && show) {
+    bar = document.createElement("div");
+    bar.id = "offlineBanner";
+    bar.className = "offline-banner";
+    bar.setAttribute("role", "alert");
+    bar.textContent = "本機伺服器沒有回應，請確認服務是否啟動後重新整理。";
+    document.body.appendChild(bar);
+  }
+  if (bar) bar.style.display = show ? "flex" : "none";
+}
+
+/**
+ * Fetch wrapper that retries GET once after 800ms on network failure, while never retrying writes.
+ * @param {RequestInfo|URL} input Request URL or object.
+ * @param {RequestInit} [init={}] Fetch init options.
+ * @returns {Promise<Response>} HTTP response.
+ */
+export async function apiFetch(input, init = {}) {
+  const method = String(init.method || "GET").toUpperCase();
+  try {
+    const res = await fetch(input, init);
+    setOfflineBanner(false);
+    return res;
+  } catch (err) {
+    if (err && err.name === "AbortError") throw err;
+    if (method === "GET") {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      try {
+        const retry = await fetch(input, init);
+        setOfflineBanner(false);
+        return retry;
+      } catch (retryErr) {
+        logger.warn("GET retry failed", retryErr);
+      }
+    }
+    setOfflineBanner(true);
+    throw err;
+  }
+}
+
+/**
+ * Create a lightweight publish/subscribe EventBus to decouple modular UI scripts.
+ * @returns {{on: Function, off: Function, emit: Function}} Frozen bus interface.
+ */
+export function createEventBus() {
+  const listeners = new Map();
+  return Object.freeze({
+    on(event, fn) {
+      if (!listeners.has(event)) listeners.set(event, new Set());
+      listeners.get(event).add(fn);
+    },
+    off(event, fn) {
+      listeners.get(event)?.delete(fn);
+    },
+    emit(event, payload) {
+      for (const fn of listeners.get(event) || []) {
+        try { fn(payload); } catch (err) { logger.error("bus handler error", err); }
+      }
+    },
+  });
+}
+
+/**
+ * Create a shallow UI state store backed by an EventBus.
+ * @param {Record<string, unknown>} [initialState={}] Initial shallow state fields.
+ * @param {{emit: Function}} [bus=createEventBus()] Event bus emitting `store:changed`.
+ * @returns {{state: Record<string, unknown>, patch: Function}} Store object.
+ */
+export function createStateStore(initialState = {}, bus = createEventBus()) {
+  const state = { ...initialState };
+  return {
+    state,
+    patch(next) {
+      Object.assign(state, next || {});
+      bus.emit("store:changed", state);
+    },
+  };
+}
+"""
+
 
 WEB_GUIDE = """# Web 前端
 
 純 HTML + CSS + JavaScript，不需要建置工具。檔案開頭都要有用途說明註解（`agentctl check` 會檢查）。
+
+- `api_client.js`：提供 `apiFetch`（GET 斷線重試 1 次、寫入絕不重試、離線橫幅）、`createEventBus` 與 `createStateStore`。
+- `styles.css`：內建 `--dur-hover` / `--dur-slide` / `--ease` Motion Tokens 與 `@media (pointer: coarse)` 觸控熱區。
+- 離線第三方資源：用 `pnpm` 鎖版安裝後透過腳本複製到 `web/vendor/`（預設已由 `code-review-guard` 與 `.graphifyignore` 排除）。
 
 本機預覽（只綁 `127.0.0.1`，區網看不到；不需要安裝任何東西）：
 
@@ -220,6 +355,7 @@ def scaffold_web_pack(target_dir: Path, project_name: str) -> None:
     web = target_dir / "web"
     _write(web / "index.html", INDEX_HTML.format(name=project_name))
     _write(web / "styles.css", STYLES_CSS)
+    _write(web / "api_client.js", API_CLIENT_JS)
     _write(web / "app.js", APP_JS)
     _write(web / "logger.js", LOGGER_JS)
     _write(web / "WEB.md", WEB_GUIDE)

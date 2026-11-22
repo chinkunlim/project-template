@@ -22,6 +22,10 @@ project_template/
 │   ├── handoff/                            # [交接紀錄] 頂部即時狀態看板 + 歷史交接時間軸，開工前必讀
 │   │   └── LATEST.md                       # [即時交接看板] 目前分支、進行中/待接手任務、已完成與待辦事項
 │   ├── hooks/                              # [版本控管的 git hooks] 由 core.hooksPath 啟用（pre-commit、pre-push）
+│   │   ├── graphify-refresh.sh
+│   │   ├── post-checkout
+│   │   ├── post-commit
+│   │   ├── post-merge
 │   │   ├── pre-commit
 │   │   └── pre-push
 │   ├── lib/                                # 框架共用 Python 函式庫 (設定載入、目錄樹註解)
@@ -175,6 +179,7 @@ project_template/
 │       │   └── web_ui.py
 │       ├── packs/
 │       │   ├── __init__.py
+│       │   ├── api_extras_pack.py
 │       │   ├── api_pack.py
 │       │   ├── common.py
 │       │   ├── db_pack.py
@@ -203,7 +208,8 @@ project_template/
 │       │   └── update_all.py
 │       └── __init__.py
 ├── tests/                                  # 【測試層】單元與整合測試
-│   └── test_framework.py
+│   ├── test_framework.py
+│   └── test_tier1_tier2.py
 ├── .editorconfig
 ├── .env.example                            # [設定範本] 環境變數清單與預設值說明
 ├── .gitignore                              # [版控排除] 排除依賴、機密 .env、憑證與執行期快取

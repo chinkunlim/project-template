@@ -9,28 +9,29 @@
 
 | 日期 | 建議 | 來源（對話 / 任務） | 狀態 |
 |---|---|---|---|
-| 2026-11-04 | **iCloud 規則**：只有使用者在當次要求時才可使用 iCloud，且只同步使用者要的 output；對話紀錄、原稿、log 一律不放；沒主動提到就絕不使用，即使上次有同步過。 | note-studio / TASK-002（使用者原話：不管是什麼專案） | 待決定 |
-| 2026-11-04 | **Agent 行為鐵律**：只做使用者要求的事、不自作主張（不刪檔、不搬資料夾、不精簡文字）；改格式不改文字（用正文指紋自動檢查）；沒看過實際輸出不可說「修好了」，known-issue 要使用者確認才可標已根治；接手時讀完整 transcript。 | note-studio / TASK-002 | 待決定 |
+| 2026-11-04 | **iCloud 規則**：只有使用者在當次要求時才可使用 iCloud，且只同步使用者要的 output；對話紀錄、原稿、log 一律不放；沒主動提到就絕不使用，即使上次有同步過。 | note-studio / TASK-002（使用者原話：不管是什麼專案） | 已採用（`docs/standards/env/icloud_rules.md`） |
+| 2026-11-04 | **Agent 行為鐵律**：只做使用者要求的事、不自作主張（不刪檔、不搬資料夾、不精簡文字）；改格式不改文字（用正文指紋自動檢查）；沒看過實際輸出不可說「修好了」，known-issue 要使用者確認才可標已根治；接手時讀完整 transcript。 | note-studio / TASK-002 | 已採用（`data_guard.md`、`empirical_evidence.md`、`MULTI_AGENT_COLLABORATION.md`） |
 | 2026-11-04 | **使用者需求總表**：每個專案在 `docs/specs/` 維護一份需求總表（逐條附 transcript 出處、落實位置、使用者確認狀態），新要求立刻加入。 | note-studio / TASK-002 | 待決定 |
-| 2026-11-04 | **code-review-guard 支援排除第三方檔案**：目前無法排除 `vendor/`、`*.min.js`，第三方壓縮檔只能放到 `src/` 外面。 | note-studio / TASK-002 | 待決定 |
-| 2026-11-10 | **Transcript 習慣分析與技能/規範沉澱**：分析完整對話 full transcript，提取使用者操作習慣與高效率、低 Token 慣例，沉澱為 Skills 與 standards 規範。 | note-studio / feedback #1 | 待決定 |
-| 2026-11-10 | **實證檢驗鐵律**：Agent 必須嚴守流程與要求，完成後必須出示實證（snapshot、pilot、虛擬測試），禁絕無實證宣稱完成。 | note-studio / feedback #2 | 待決定 |
-| 2026-11-10 | **四層虛擬測試體系**：規範軟體測試、Dummy files 測試、模擬 Dummy 使用者走測、Web App 逐項按鈕與元件功能測試。 | note-studio / feedback #3 | 待決定 |
-| 2026-11-10 | **程式編寫鐵律（Coding Principles）**：寫/修程式嚴格遵循 TDD、SOLID、Atomic 等原則。 | note-studio / feedback #4 | 待決定 |
-| 2026-11-10 | **資料寫入鐵律（Data Modification）**：寫入 Data 嚴格遵守 TDD、SOLID、Atomic，防範非預期覆寫與改錯內容，格式內容嚴格隔離。 | note-studio / feedback #5 | 待決定 |
-| 2026-11-10 | **目錄結構與實用功能推廣**：盤點專案目錄結構與實證功能，提煉為通用母版範本。 | note-studio / feedback #6 | 待決定 |
-| 2026-11-10 | **Graphify 整合開發流程與第三方排除**：編程過程納入 Graphify，嚴格排除 3rd party 降噪，藉圖譜診斷專案優化。 | note-studio / feedback #7 | 待決定 |
-| 2026-11-10 | **使用者視角端到端 Workflow 視覺化與程式校驗**：討論/調整功能必須附帶從使用者起點到最終輸出的完整 Workflow（不可精簡），並與程式雙向校驗不一致處。 | note-studio / feedback #8 | 待決定 |
-| 2026-11-10 | **Taste Skill 重構與美學/心理學/UI/UX 原則**：去 AI 味、修正邊距按鈕缺陷；動工前先出圖過目、學習 Figma 佈局，結合美學與目標受眾認知心理學。 | note-studio / feedback #9 | 待決定 |
-| 2026-11-10 | **完整 CLI 架構**：核心功能封裝完整 CLI，便於 MCP、Open WebUI Pipeline 與未來網頁版後端串接。 | note-studio / feedback #10 | 待決定 |
-| 2026-11-10 | **iCloud 嚴格同步規範與目錄集中**：僅在不在電腦旁或明確指示時同步，僅放核心 output（如 PDF），集中存放於 `project-data/<專案>/` 避免根目錄散落。 | note-studio / feedback #11 | 待決定 |
-| 2026-11-10 | **DATA_DIR 重構與多版本隔離**：從使用者查找視角劃分章節與共用目錄，建立多輪測試與重複產出之版本管理防混淆。 | note-studio / feedback #12 | 待決定 |
-| 2026-11-10 | **追蹤文件自動建置與核心原則修改保護**：自動建立 ADR、Known Issues、TODO；修改大原則 md 須經使用者明確同意並寫入 feedback。 | note-studio / feedback #13 | 待決定 |
-| 2026-11-10 | **Standards 文件模組化拆分與 Context 優化**：評估拆分 `docs/standards/`，按需漸進載入，避免一次載入過多規範導致記憶混亂。 | note-studio / feedback #14 | 待決定 |
-| 2026-11-10 | **新對話冷啟動一致性協議**：建立跨 Session 開工必讀機制，確保新開對話第一時間遵守使用者習慣與約束。 | note-studio / feedback #15 | 待決定 |
-| 2026-11-10 | **Closeout 自動沉澱習慣機制**：在 `session-closeout` 流程自動萃取當次對話展現的有效操作與習慣要求。 | note-studio / feedback #16 | 待決定 |
+| 2026-11-04 | **code-review-guard 支援排除第三方檔案**：目前無法排除 `vendor/`、`*.min.js`，第三方壓縮檔只能放到 `src/` 外面。 | note-studio / TASK-002 | 已採用（v3.6.0 `[quality] exclude_paths` 預設排除 `vendor/` 與 `*.min.*`） |
+| 2026-11-10 | **Transcript 習慣分析與技能/規範沉澱**：分析完整對話 full transcript，提取使用者操作習慣與高效率、低 Token 慣例，沉澱為 Skills 與 standards 規範。 | note-studio / feedback #1 | 已採用（`closeout --habits` + `MULTI_AGENT_COLLABORATION.md`） |
+| 2026-11-10 | **實證檢驗鐵律**：Agent 必須嚴守流程與要求，完成後必須出示實證（snapshot、pilot、虛擬測試），禁絕無實證宣稱完成。 | note-studio / feedback #2 | 已採用（`docs/standards/testing/empirical_evidence.md`） |
+| 2026-11-10 | **四層虛擬測試體系**：規範軟體測試、Dummy files 測試、模擬 Dummy 使用者走測、Web App 逐項按鈕與元件功能測試。 | note-studio / feedback #3 | 已採用（`docs/standards/testing/virtual_testing.md`） |
+| 2026-11-10 | **程式編寫鐵律（Coding Principles）**：寫/修程式嚴格遵循 TDD、SOLID、Atomic 等原則。 | note-studio / feedback #4 | 已採用（`docs/standards/coding/principles.md`） |
+| 2026-11-10 | **資料寫入鐵律（Data Modification）**：寫入 Data 嚴格遵守 TDD、SOLID、Atomic，防範非預期覆寫與改錯內容，格式內容嚴格隔離。 | note-studio / feedback #5 | 已採用（`docs/standards/coding/data_guard.md`） |
+| 2026-11-10 | **目錄結構與實用功能推廣**：盤點專案目錄結構與實證功能，提煉為通用母版範本。 | note-studio / feedback #6 | 已採用（v3.6.0 第一、二級框架與 Pack 範本落地） |
+| 2026-11-10 | **Graphify 整合開發流程與第三方排除**：編程過程納入 Graphify，嚴格排除 3rd party 降噪，藉圖譜診斷專案優化。 | note-studio / feedback #7 | 已採用（`.graphifyignore` + `.agents/hooks/graphify-refresh.sh` + `workflow_parity.md`） |
+| 2026-11-10 | **使用者視角端到端 Workflow 視覺化與程式校驗**：討論/調整功能必須附帶從使用者起點到最終輸出的完整 Workflow（不可精簡），並與程式雙向校驗不一致處。 | note-studio / feedback #8 | 已採用（`docs/standards/architecture/workflow_parity.md`） |
+| 2026-11-10 | **Taste Skill 重構與美學/心理學/UI/UX 原則**：去 AI 味、修正邊距按鈕缺陷；動工前先出圖過目、學習 Figma 佈局，結合美學與目標受眾認知心理學。 | note-studio / feedback #9 | 已採用（`docs/standards/web/taste_design.md` + `frontend-design` skill） |
+| 2026-11-10 | **完整 CLI 架構**：核心功能封裝完整 CLI，便於 MCP、Open WebUI Pipeline 與未來網頁版後端串接。 | note-studio / feedback #10 | 已採用（`python_pack.py` CLI + `--with api` 雙入口範本） |
+| 2026-11-10 | **iCloud 嚴格同步規範與目錄集中**：僅在不在電腦旁或明確指示時同步，僅放核心 output（如 PDF），集中存放於 `project-data/<專案>/` 避免根目錄散落。 | note-studio / feedback #11 | 已採用（`docs/standards/env/icloud_rules.md`） |
+| 2026-11-10 | **DATA_DIR 重構與多版本隔離**：從使用者查找視角劃分章節與共用目錄，建立多輪測試與重複產出之版本管理防混淆。 | note-studio / feedback #12 | 已採用（`docs/standards/env/data_dir_layout.md`） |
+| 2026-11-10 | **追蹤文件自動建置與核心原則修改保護**：自動建立 ADR、Known Issues、TODO；修改大原則 md 須經使用者明確同意並寫入 feedback。 | note-studio / feedback #13 | 已採用（`closeout_runner.py --strict-docs`、`adr-issue-tracker`、`PROJECT_RULES.md`） |
+| 2026-11-10 | **Standards 文件模組化拆分與 Context 優化**：評估拆分 `docs/standards/`，按需漸進載入，避免一次載入過多規範導致記憶混亂。 | note-studio / feedback #14 | 已採用（`docs/standards/STANDARDS.md` 漸進揭露結構） |
+| 2026-11-10 | **新對話冷啟動一致性協議**：建立跨 Session 開工必讀機制，確保新開對話第一時間遵守使用者習慣與約束。 | note-studio / feedback #15 | 已採用（`AGENTS.md` §4 開工必讀 + `MULTI_AGENT_COLLABORATION.md` §2） |
+| 2026-11-10 | **Closeout 自動沉澱習慣機制**：在 `session-closeout` 流程自動萃取當次對話展現的有效操作與習慣要求。 | note-studio / feedback #16 | 已採用（`closeout_runner.py --habits` + `MULTI_AGENT_COLLABORATION.md` §5） |
 | 2026-11-10 | **一鍵安裝與後期平滑更新鐵律**：專案到最後必須具備一鍵安裝能力（自動處理鎖定依賴、.env 與 DATA_DIR），且必須規劃並記錄後期更新升級與資料安全保護機制。 | 使用者直接指示 | 已採用 |
 | 2026-11-10 | **Code Review 零忽視與即時修復鐵律**：執行檢查若有問題不要忽略，必須馬上解決，消除技術債，維持零違規提交。 | 使用者直接指示 | 已採用 |
+| 2026-11-22 | **Tier 1 全專案通用修復與防線 + Tier 2 Web/API/DB 標準化套件（v3.6.0）**：`setup_env` 映射/stdlib 補強、`commit --push` 空樹推送、`review_guard --staged`、多 Agent `closeout --paths` 與任務互斥、`detect_framework_drift`、Graphify 自動刷新 Hooks、`TASK-NNN-checklist.md`、`wiring.py` + `safe_user_path`、`domain/protocols.py`、Request-Scoped DB Session、`NoCacheStaticFiles` + Tailscale Host + `safe_resolve_under`、`port_check` + `test_web_contracts`、`api_client.js` | 使用者直接指示：「落實第一級和第二級」 | 已採用（v3.6.0） |
 
 ---
 

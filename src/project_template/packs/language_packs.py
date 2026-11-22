@@ -23,6 +23,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from project_template.packs.api_extras_pack import build_web_contracts_test
 from project_template.packs.common import detect_node_toolchain, slugify_package_name, write_file
 from project_template.packs.dx_pack import scaffold_dx_files
 from project_template.packs.evals_pack import scaffold_evals_pack
@@ -35,6 +36,32 @@ from project_template.packs.rust_pack import scaffold_rust_pack
 from project_template.packs.web_pack import scaffold_web_pack
 
 logger = logging.getLogger(__name__)
+
+
+def _scaffold_addons(target_dir: Path, project_name: str, settings: dict[str, Any], gas_options: dict[str, str]) -> None:
+    """Generate files for optional add-ons (`web`, `gas`, `mobile`, `evals`) and DX helpers.
+
+    Args:
+        target_dir: Project root directory.
+        project_name: Project display name.
+        settings: Output of `project_settings()`.
+        gas_options: Timezone, license, description and pnpm version.
+    """
+    addons = settings["addons"]
+    pkg = slugify_package_name(project_name)
+    if "web" in addons:
+        scaffold_web_pack(target_dir, project_name)
+        if settings["base"] == "python" and "api" not in addons:
+            write_file(target_dir / "tests" / "test_web_contracts.py", build_web_contracts_test(pkg, False, False))
+    if "gas" in addons:
+        scaffold_gas_pack(target_dir / "gas", project_name, gas_options.get("description", ""), gas_options)
+    if "mobile" in addons:
+        scaffold_mobile_pack(target_dir, project_name, gas_options.get("pnpm", ""))
+    if "evals" in addons:
+        scaffold_evals_pack(target_dir)
+    dist = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"
+    names = {"pkg": pkg, "dist": dist, "license": gas_options.get("license", "none")}
+    scaffold_dx_files(target_dir, settings["languages"], names)
 
 
 def generate_stack_files(target_dir: Path, project_name: str, settings: dict[str, Any], options: dict[str, str]) -> None:
@@ -51,7 +78,7 @@ def generate_stack_files(target_dir: Path, project_name: str, settings: dict[str
     base, description = settings["base"], options.get("description", "")
     uses_node = base in ("node", "gas") or bool({"gas", "mobile"} & set(settings["addons"]))
     toolchain = {**detect_node_toolchain(), **{k: v for k, v in options.items() if k in ("node", "pnpm") and v}} if uses_node else {}
-    gas_options = {"timezone": options.get("timezone", "UTC"), "pnpm": toolchain.get("pnpm", "")}
+    gas_options = {"timezone": options.get("timezone", "UTC"), "pnpm": toolchain.get("pnpm", ""), "description": description, "license": options.get("license", "none")}
     if uses_node:
         write_file(target_dir / ".nvmrc", toolchain["node"] + "\n")
     if base == "python":
@@ -68,14 +95,4 @@ def generate_stack_files(target_dir: Path, project_name: str, settings: dict[str
         write_file(target_dir / "VERSION", "0.1.0\n")  # app-only project: the code lives in mobile/
     else:
         scaffold_generic_pack(target_dir, project_name)
-    if "web" in settings["addons"]:
-        scaffold_web_pack(target_dir, project_name)
-    if "gas" in settings["addons"]:
-        scaffold_gas_pack(target_dir / "gas", project_name, description, gas_options)
-    if "mobile" in settings["addons"]:
-        scaffold_mobile_pack(target_dir, project_name, toolchain.get("pnpm", ""))
-    if "evals" in settings["addons"]:
-        scaffold_evals_pack(target_dir)
-    dist = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"
-    names = {"pkg": slugify_package_name(project_name), "dist": dist, "license": options.get("license", "none")}
-    scaffold_dx_files(target_dir, settings["languages"], names)
+    _scaffold_addons(target_dir, project_name, settings, gas_options)

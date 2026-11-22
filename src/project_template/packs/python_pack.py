@@ -458,6 +458,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from {pkg}.config.settings import AppConfig  # noqa: E402
 from {pkg}.domain.models import GreetingRequest  # noqa: E402
 from {pkg}.entrypoints.cli import main  # noqa: E402
+from {pkg}.entrypoints.wiring import safe_user_path  # noqa: E402
 from {pkg}.services.greeting import create_greeting  # noqa: E402
 
 
@@ -484,9 +485,81 @@ class GreetingServiceTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.getvalue().strip(), "Hello, Bob!")
 
+    def test_safe_user_path_isolates_system_dirs_in_test_env(self) -> None:
+        """In test mode, writes aimed at ~/Desktop or ~/.config are redirected under DATA_DIR."""
+        cfg = AppConfig(app_env="test", data_dir=Path("/tmp/{pkg}-test-data"))
+        isolated = safe_user_path(cfg, Path.home() / "Desktop" / "out.txt", "desktop")
+        self.assertTrue(isolated.resolve().is_relative_to(cfg.data_dir.resolve()))
+        self.assertEqual(isolated.name, "out.txt")
+
 
 if __name__ == "__main__":
     unittest.main()
+'''
+
+PY_WIRING = '''"""Shared wiring helpers for CLI, HTTP and MCP entrypoints.
+
+Centralises runtime config loading and system-path isolation so unit tests running with
+`APP_ENV=test` never write to `~/Desktop` or `~/.config/`.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+{third_import}
+{db_import}from {pkg}.config.settings import AppConfig, load_config
+
+logger = logging.getLogger(__name__)
+
+
+def resolve_runtime_config(config: AppConfig | None = None) -> AppConfig:
+    """Return an explicitly passed `AppConfig` or load settings from `.env`.
+
+    Args:
+        config: Optional pre-built configuration instance.
+
+    Returns:
+        Active `AppConfig`.
+    """
+    return config if config is not None else load_config()
+
+
+def safe_user_path(config: AppConfig, target: Path, test_subdir: str) -> Path:
+    """Guard user-directory writes against polluting host paths during automated tests.
+
+    When `config.app_env == "test"` and `target` points outside `config.data_dir`, redirects
+    the destination into `<data_dir>/_test_isolated/<test_subdir>/<filename>`.
+
+    Args:
+        config: Application configuration (checks `app_env` and `data_dir`).
+        target: Requested output path (e.g. `~/Desktop/report.pdf`).
+        test_subdir: Subfolder label under `_test_isolated/` used when isolating test runs.
+
+    Returns:
+        Resolved safe target path.
+    """
+    resolved_target = target.expanduser().resolve()
+    resolved_data = config.data_dir.expanduser().resolve()
+    if config.app_env == "test" and not resolved_target.is_relative_to(resolved_data):
+        isolated = resolved_data / "_test_isolated" / test_subdir / resolved_target.name
+        logger.debug("isolated test path %s -> %s", resolved_target, isolated)
+        return isolated
+    return target
+{db_factory}'''
+
+PY_WIRING_DB_HELPER = '''
+
+def build_session_factory(config: AppConfig) -> sessionmaker[Session]:
+    """Build a SQLAlchemy session factory from `config.database_url`.
+
+    Args:
+        config: Application configuration.
+
+    Returns:
+        Configured `sessionmaker[Session]`.
+    """
+    return make_session_factory(create_db_engine(config.database_url))
 '''
 
 LAYER_DOCS = {
@@ -613,6 +686,27 @@ strict = true
 '''
 
 
+def build_wiring_module(pkg: str, addons: list[str]) -> str:
+    """Render `entrypoints/wiring.py` with runtime config, test-path isolation and optional DB wiring.
+
+    Args:
+        pkg: Python package name under `src/`.
+        addons: Active project add-ons (`db` adds `build_session_factory`).
+
+    Returns:
+        Python source text.
+    """
+    with_db = "db" in addons
+    third_import = "\nfrom sqlalchemy.orm import Session, sessionmaker\n" if with_db else ""
+    db_import = f"from {pkg}.adapters.db.session import create_db_engine, make_session_factory\n" if with_db else ""
+    return PY_WIRING.format(
+        pkg=pkg,
+        third_import=third_import,
+        db_import=db_import,
+        db_factory=PY_WIRING_DB_HELPER if with_db else "",
+    )
+
+
 def scaffold_python_pack(target_dir: Path, project_name: str, description: str, addons: list[str] | None = None) -> None:
     """Create the Python starter (`pyproject.toml`, `.python-version`, layered `src/<pkg>`, `tests/`).
 
@@ -637,6 +731,7 @@ def scaffold_python_pack(target_dir: Path, project_name: str, description: str, 
     _write(base / "domain" / "models.py", PY_DOMAIN)
     _write(base / "services" / "greeting.py", PY_SERVICE.format(pkg=pkg))
     _write(base / "entrypoints" / "cli.py", PY_CLI.format(pkg=pkg, cmd=dist, name=project_name))
+    _write(base / "entrypoints" / "wiring.py", build_wiring_module(pkg, addons))
     _write(target_dir / "tests" / "__init__.py", '"""Test package."""\n')
     _write(target_dir / "tests" / "test_greeting.py", PY_TEST.format(pkg=pkg))
     if "db" in addons:

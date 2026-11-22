@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from project_template.packs.api_extras_pack import PROTOCOLS_PY, REQUEST_SCOPE_DB_TEST
 from project_template.packs.common import write_file as _write
 
 logger = logging.getLogger(__name__)
@@ -88,13 +89,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 logger = logging.getLogger(__name__)
+_DB_SCOPE: ContextVar[object] = ContextVar("db_scope", default="background")
 
 
 def create_db_engine(database_url: str) -> Engine:
@@ -154,6 +157,39 @@ def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+def make_request_scoped_session(factory: sessionmaker[Session]) -> scoped_session[Session]:
+    """Build a ContextVar-scoped session registry for HTTP request handlers.
+
+    Args:
+        factory: Session factory from `make_session_factory()`.
+
+    Returns:
+        `scoped_session` bound to `_DB_SCOPE` (isolated per async/thread request context).
+    """
+    return scoped_session(factory, scopefunc=_DB_SCOPE.get)
+
+
+def enter_request_db_scope() -> Token[object]:
+    """Start a fresh per-request DB session scope and return the ContextVar reset token.
+
+    Returns:
+        Token to pass into `exit_request_db_scope()`.
+    """
+    return _DB_SCOPE.set(object())
+
+
+def exit_request_db_scope(token: Token[object], registries: list[scoped_session[Session]]) -> None:
+    """Release all scoped DB sessions created during the current request and reset `_DB_SCOPE`.
+
+    Args:
+        token: Token from `enter_request_db_scope()`.
+        registries: Active `scoped_session` registries managed by the middleware.
+    """
+    for registry in registries:
+        registry.remove()
+    _DB_SCOPE.reset(token)
 '''
 
 REPOSITORY_PY = '''"""Greeting repository: stores and reads greetings, returning domain objects."""
@@ -222,7 +258,14 @@ import unittest
 
 from {pkg}.adapters.db.base import Base
 from {pkg}.adapters.db.repository import GreetingRepository
-from {pkg}.adapters.db.session import create_db_engine, make_session_factory, session_scope
+from {pkg}.adapters.db.session import (
+    create_db_engine,
+    enter_request_db_scope,
+    exit_request_db_scope,
+    make_request_scoped_session,
+    make_session_factory,
+    session_scope,
+)
 from {pkg}.domain.models import GreetingResult
 
 
@@ -250,7 +293,7 @@ class GreetingRepositoryTest(unittest.TestCase):
             raise RuntimeError("boom")
         with session_scope(self.factory) as session:
             self.assertEqual(GreetingRepository(session).recent(), [])
-
+{request_scope_test}
 
 if __name__ == "__main__":
     unittest.main()
@@ -264,33 +307,26 @@ file_template = %%(year)d%%(month).2d%%(day).2d_%%(rev)s_%%(slug)s
 
 [loggers]
 keys = root,sqlalchemy,alembic
-
 [handlers]
 keys = console
-
 [formatters]
 keys = generic
-
 [logger_root]
 level = WARNING
 handlers = console
-
 [logger_sqlalchemy]
 level = WARNING
 handlers =
 qualname = sqlalchemy.engine
-
 [logger_alembic]
 level = INFO
 handlers =
 qualname = alembic
-
 [handler_console]
 class = StreamHandler
 args = (sys.stderr,)
 level = NOTSET
 formatter = generic
-
 [formatter_generic]
 format = %(levelname)-5.5s [%(name)s] %(message)s
 """
@@ -449,9 +485,10 @@ def scaffold_db_pack(target_dir: Path, pkg: str) -> None:
     _write(db / "models.py", MODELS_PY.format(pkg=pkg))
     _write(db / "session.py", SESSION_PY.format())
     _write(db / "repository.py", REPOSITORY_PY.format(pkg=pkg))
+    _write(target_dir / "src" / pkg / "domain" / "protocols.py", PROTOCOLS_PY.format(pkg=pkg))
     _write(target_dir / "alembic.ini", ALEMBIC_INI)
     _write(target_dir / "alembic" / "env.py", ENV_PY.format(pkg=pkg))
     _write(target_dir / "alembic" / "script.py.mako", SCRIPT_MAKO)
     _write(target_dir / "alembic" / "versions" / "20260101_0001_create_greetings.py", FIRST_REVISION)
     _write(target_dir / "alembic" / "DB.md", DB_GUIDE)
-    _write(target_dir / "tests" / "test_db.py", DB_TEST.format(pkg=pkg))
+    _write(target_dir / "tests" / "test_db.py", DB_TEST.format(pkg=pkg, request_scope_test=REQUEST_SCOPE_DB_TEST))
