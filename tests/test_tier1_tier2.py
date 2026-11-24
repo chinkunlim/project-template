@@ -189,14 +189,40 @@ class Tier1FrameworkFixesTest(unittest.TestCase):
             self.assertTrue(os.access(path, os.X_OK), name)
             self.assertEqual(subprocess.run(["bash", "-n", str(path)], check=False).returncode, 0)
 
-        no_graph_out = _run(self.root, "bash", str(self.root / ".agents" / "hooks" / "graphify-refresh.sh"), env={"PATH": "/usr/bin:/bin"})
+        empty_home = Path(self.tmp.name) / "empty-home"
+        empty_home.mkdir()
+        no_graph_out = _run(
+            self.root,
+            "bash",
+            str(self.root / ".agents" / "hooks" / "graphify-refresh.sh"),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(empty_home)},
+        )
         self.assertEqual(no_graph_out.returncode, 0)
         self.assertEqual(no_graph_out.stderr.strip(), "")
 
         (self.root / "graphify-out").mkdir()
-        warn_res = _run(self.root, "bash", str(self.root / ".agents" / "hooks" / "graphify-refresh.sh"), env={"PATH": "/usr/bin:/bin"})
+        warn_res = _run(
+            self.root,
+            "bash",
+            str(self.root / ".agents" / "hooks" / "graphify-refresh.sh"),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(empty_home)},
+        )
         self.assertEqual(warn_res.returncode, 0)
         self.assertIn("graphify not installed", warn_res.stderr)
+
+        fallback_home = Path(self.tmp.name) / "home-with-graphify"
+        (fallback_home / ".local" / "bin").mkdir(parents=True)
+        home_graphify = fallback_home / ".local" / "bin" / "graphify"
+        home_graphify.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        home_graphify.chmod(0o755)
+        home_res = _run(
+            self.root,
+            "bash",
+            str(self.root / ".agents" / "hooks" / "graphify-refresh.sh"),
+            env={"PATH": "/usr/bin:/bin", "HOME": str(fallback_home)},
+        )
+        self.assertEqual(home_res.returncode, 0)
+        self.assertNotIn("graphify not installed", home_res.stderr)
 
         fake_bin = Path(self.tmp.name) / "bin"
         fake_bin.mkdir()
@@ -204,16 +230,45 @@ class Tier1FrameworkFixesTest(unittest.TestCase):
         fake_graphify.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         fake_graphify.chmod(0o755)
         lock = self.root / "graphify-out" / ".hook.lock"
-        lock.mkdir()
+        lock.mkdir(exist_ok=True)
         os.utime(lock, (1_700_000_000, 1_700_000_000))
         stale_res = _run(
             self.root,
             "bash",
             str(self.root / ".agents" / "hooks" / "graphify-refresh.sh"),
-            env={"PATH": f"{fake_bin}:/usr/bin:/bin"},
+            env={"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(empty_home)},
         )
         self.assertEqual(stale_res.returncode, 0)
         self.assertIn("removed a stale lock", stale_res.stderr)
+
+    def test_closeout_refreshes_graphify_synchronously(self) -> None:
+        """`agentctl closeout` runs `build_graph.py` and `graphify update .` synchronously (ISSUE-006)."""
+        fake_bin = Path(self.tmp.name) / "closeout-bin"
+        fake_bin.mkdir()
+        fake_graphify = fake_bin / "graphify"
+        fake_graphify.write_text(
+            "#!/bin/sh\nmkdir -p graphify-out\nprintf '%s\\n' \"$*\" > graphify-out/called.txt\nprintf '{}' > graphify-out/graph.json\n",
+            encoding="utf-8",
+        )
+        fake_graphify.chmod(0o755)
+        (self.root / "graphify-out").mkdir(exist_ok=True)
+        (self.root / "graphify-out" / ".hook.lock").mkdir(exist_ok=True)
+
+        res = _run(
+            self.root,
+            "scripts/agentctl.py",
+            "closeout",
+            "--agent",
+            "claude-code",
+            "--goal",
+            "Sync knowledge graphs",
+            "--no-push",
+            env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}", "HOME": str(Path(self.tmp.name) / "empty-home")},
+        )
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertTrue((self.root / ".agents" / "cache" / "graph.json").is_file())
+        self.assertTrue((self.root / "graphify-out" / "graph.json").is_file())
+        self.assertEqual((self.root / "graphify-out" / "called.txt").read_text(encoding="utf-8").strip(), "update .")
 
     def test_task_checklist_generation(self) -> None:
         """`agentctl task create --checklist` and `task checklist` generate cross-session checklists."""

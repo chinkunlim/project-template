@@ -109,6 +109,7 @@ project_template/
 │   │   ├── 003-template-release-version.md
 │   │   ├── 004-closeout-symlink-root-detection.md
 │   │   ├── 005-secret-regex-lookbehind-false-positive.md
+│   │   ├── 006-graphify-closeout-and-hook-detach.md
 │   │   ├── _TEMPLATE.md                    # 已知問題範本 (tracker_cli 會套用)
 │   │   └── KNOWN_ISSUES.md                 # 已知問題總表 (🔴/🟡/🟢)
 │   ├── specs/                              # [功能規格書] PRD / API Contract

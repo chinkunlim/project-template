@@ -35,6 +35,7 @@ The template's version is the framework version that projects record in `.agents
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)
 - fix(framework): backport setup_env import hints check and auto_commit missing file staging (by `@antigravity`)
 - fix(skills): remove bash comments in compliance-scanner doc for zsh compatibility (by `@antigravity`)
+- fix(closeout): run graphify update synchronously and harden hook detach (by `@antigravity`)
 
 ### Documentation
 - docs: add superpowers plugin and methodology skills to local AI environment (by `@antigravity`)
