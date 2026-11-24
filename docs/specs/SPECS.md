@@ -10,3 +10,4 @@
 
 | 規格 | 狀態 | 說明 |
 |---|---|---|
+| [`001-project-web-launcher.md`](001-project-web-launcher.md) | Approved | 總控台網頁整合各專案 FastAPI 啟動器、MCP/OpenAPI 三入口與 `scripts/hub.py` 單一指令集 |

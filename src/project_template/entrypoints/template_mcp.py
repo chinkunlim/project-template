@@ -28,6 +28,7 @@ from typing import Any
 from project_template.config.framework import FRAMEWORK_VERSION
 from project_template.config.logging_setup import run_command
 from project_template.services import template_service as ts
+from project_template.services import web_launcher as wl
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +284,91 @@ def get_job_status() -> dict[str, Any] | None:
     return ts.job_view(ts.RUNNER.current)
 
 
+def list_web_services(folder: str = "") -> list[dict[str, Any]]:
+    """List every tracked project with a FastAPI web service and its live listening state. Read only.
+
+    Args:
+        folder: Projects folder to scan; empty = template's parent folder plus registry.
+
+    Returns:
+        List of project web descriptors (`name`, `port`, `url`, `running`, `managed`, `pid`).
+    """
+    return wl.list_web_services(ts.resolve_root(folder))
+
+
+def start_project_web(project: str, folder: str = "", confirm: bool = False) -> dict[str, Any] | str:
+    """Start one project's FastAPI web server in the background until ready. Needs confirm=True.
+
+    Args:
+        project: Tracked project name or absolute path.
+        folder: Projects folder when passing project name; empty = default.
+        confirm: Must be True after asking the user to confirm.
+
+    Returns:
+        Confirmation prompt when `confirm=False`, or updated status dictionary with `url`.
+    """
+    target = wl.resolve_project_path(project, ts.resolve_root(folder))
+    spec = wl.discover_web_service(target)
+    if spec is None:
+        raise ValueError(f"`{target.name}` 沒有設定網頁服務")
+    if not confirm:
+        cmd_str = " ".join(spec.command)
+        return (
+            f"Not run yet — start `{spec.name}` web server at {spec.url} via `{cmd_str}` "
+            f"(in `{spec.path}`). Ask the user and call again with confirm=True."
+        )
+    return wl.start_project_web(target)
+
+
+def stop_project_web(project: str, folder: str = "", confirm: bool = False) -> dict[str, Any] | str:
+    """Stop one Hub-managed child project's web server cleanly. Needs confirm=True.
+
+    Args:
+        project: Tracked project name or absolute path.
+        folder: Projects folder when passing project name; empty = default.
+        confirm: Must be True after asking the user to confirm.
+
+    Returns:
+        Confirmation prompt when `confirm=False`, or stop result dictionary.
+    """
+    target = wl.resolve_project_path(project, ts.resolve_root(folder))
+    if not confirm:
+        return f"Not run yet — stop `{target.name}` web server. Call again with confirm=True after asking the user."
+    return wl.stop_project_web(target)
+
+
+def stop_all_project_webs(folder: str = "", confirm: bool = False) -> dict[str, Any] | str:
+    """Stop every Hub-managed child project web server to free host memory. Needs confirm=True.
+
+    Args:
+        folder: Projects folder; empty = default.
+        confirm: Must be True after asking the user to confirm.
+
+    Returns:
+        Confirmation prompt when `confirm=False`, or summary of stopped/skipped services.
+    """
+    root = ts.resolve_root(folder)
+    if not confirm:
+        running = [s["name"] for s in wl.list_web_services(root) if s["running"] and s["managed"]]
+        return f"Not run yet — stop managed web servers: {', '.join(running) or 'none'}. Call with confirm=True after user agrees."
+    return wl.stop_all_project_webs(root)
+
+
+def get_project_web_logs(project: str, lines: int = 80, folder: str = "") -> dict[str, Any]:
+    """Read trailing startup/runtime log lines for one child project's web server. Read only.
+
+    Args:
+        project: Tracked project name or absolute path.
+        lines: Maximum trailing log lines to return (default 80).
+        folder: Projects folder when passing project name; empty = default.
+
+    Returns:
+        Dictionary with `name`, `log_file`, and `lines`.
+    """
+    target = wl.resolve_project_path(project, ts.resolve_root(folder))
+    return wl.read_web_logs(target, lines=lines)
+
+
 # Every tool the server offers (the function name is the MCP tool name).
 TOOLS = (
     describe_options,
@@ -299,6 +385,11 @@ TOOLS = (
     preview_framework_update,
     apply_framework_update,
     get_job_status,
+    list_web_services,
+    start_project_web,
+    stop_project_web,
+    stop_all_project_webs,
+    get_project_web_logs,
 )
 
 

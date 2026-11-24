@@ -285,3 +285,56 @@ class Tools:
             return started
         self._wait(300)
         return self.get_job_status()
+
+    def list_web_services(self) -> str:
+        """
+        List every tracked project with a FastAPI web service, its local URL and whether it is running.
+        :return: One line per project web service.
+        """
+        rows = self._call("GET", "/api/web/services?" + self._root_query())
+        if isinstance(rows, str):
+            return rows
+        lines = [f"- {r['name']}: {'RUNNING' if r['running'] else 'stopped'} ({r['url']})" for r in rows]
+        return "\n".join(lines) or "No projects with a web service found."
+
+    def start_project_web(self, project: str, confirm: bool = False) -> str:
+        """
+        Start a project's FastAPI web server in the background and return its local URL.
+        :param project: Project name or absolute path.
+        :param confirm: Must be True; first ask the user before starting the server.
+        :return: Start result with URL, or confirmation prompt.
+        """
+        if not confirm:
+            return f"Not started yet. Tell the user `{project}` web server will be started; call again with confirm=True."
+        body = {"project": project, "confirm": True, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
+        res = self._call("POST", "/api/web/start", body)
+        if isinstance(res, str):
+            return res
+        return f"{res['name']} ready at {res['url']} (already_running={res.get('already_running', False)})."
+
+    def stop_project_web(self, project: str, confirm: bool = False) -> str:
+        """
+        Stop a Hub-managed project web server to free host memory.
+        :param project: Project name or absolute path.
+        :param confirm: Must be True; first ask the user before stopping the server.
+        :return: Stop result message.
+        """
+        if not confirm:
+            return f"Not stopped yet. Tell the user `{project}` web server will be stopped; call again with confirm=True."
+        body = {"project": project, "confirm": True, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
+        res = self._call("POST", "/api/web/stop", body)
+        return res if isinstance(res, str) else f"{res['name']}: {res['message']} ({res['url']})"
+
+    def stop_all_project_webs(self, confirm: bool = False) -> str:
+        """
+        Stop all Hub-managed child project web servers.
+        :param confirm: Must be True; first ask the user before stopping running servers.
+        :return: Summary of stopped and skipped services.
+        """
+        if not confirm:
+            return "Not stopped yet. Ask the user and call again with confirm=True to stop all managed web servers."
+        body = {"confirm": True, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
+        res = self._call("POST", "/api/web/stop-all", body)
+        if isinstance(res, str):
+            return res
+        return f"Stopped {len(res['stopped'])}, skipped {len(res['skipped'])}."

@@ -75,14 +75,34 @@
     .table-wrap tr:first-child:has(th) { display: none; }
     .table-wrap tr { border-top: 1px solid var(--line); padding: 10px 0; }
     .table-wrap td { border: 0; padding: 2px 0; }
-    .table-wrap .hint { word-break: break-all; }
+  .table-wrap .hint { word-break: break-all; }
+  }
+  .header-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .doc-link { font-size: 13px; color: var(--accent); text-decoration: none; border: 1px solid var(--line);
+              border-radius: 8px; padding: 4px 10px; background: var(--panel); }
+  .doc-link:hover { border-color: var(--accent); }
+  .launcher-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; background: var(--bg); }
+  .launcher-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(235px, 1fr)); gap: 10px; margin-top: 10px; }
+  .launcher-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+                   display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
+                   transition: border-color .16s ease, transform .16s ease; }
+  .launcher-card:hover { border-color: var(--accent); }
+  .launcher-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  @media (pointer: coarse) {
+    button, .doc-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    button.small { min-height: 40px; }
   }
 </style>
 </head>
 <body>
 <main>
-  <h1>專案母版</h1>
-  <p class="sub" id="sub">載入中…</p>
+  <div class="header-bar">
+    <div>
+      <h1>專案母版</h1>
+      <p class="sub" id="sub" style="margin-bottom:0">載入中…</p>
+    </div>
+    <a class="doc-link" href="/docs" target="_blank" rel="noopener">📖 OpenAPI 文件</a>
+  </div>
 
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="projects" aria-selected="true">總覽</button>
@@ -175,6 +195,21 @@
   </section>
 
   <section class="panel" data-panel="projects">
+    <div id="web-launcher" class="launcher-box">
+      <div class="row" style="justify-content: space-between">
+        <div class="row">
+          <h2 style="margin:0">🚀 快速啟動專案網頁</h2>
+          <span class="chip" id="w-summary">偵測中…</span>
+        </div>
+        <div class="row">
+          <button class="small" id="w-refresh">刷新燈號</button>
+          <button class="small" id="w-stop-all" hidden>停止全部子服務</button>
+        </div>
+      </div>
+      <p class="hint">按需啟動：平常不佔記憶體，點擊「啟動並開啟」後才在背景啟動對應 FastAPI 服務，用完可在此停止釋放記憶體。</p>
+      <div class="launcher-grid" id="w-cards"></div>
+      <div class="msg" id="w-msg"></div>
+    </div>
     <h2>我建立的專案</h2>
     <p class="hint">母版所在資料夾裡的專案，加上用母版建立、遷移或手動加入的專案（記錄在母版的 .local/projects.json，不進 git）。改進建議與框架更新也包含這些專案。「未推送 / 落後」以上次 git fetch 為準，按「git fetch」更新。</p>
     <div class="row"><input type="text" id="p-root"><button data-pick="p-root">選擇…</button><button class="primary" id="p-scan">重新整理</button></div>
@@ -225,6 +260,13 @@
   <div class="row"><input type="text" id="b-path"><button class="small" id="b-up">上一層</button></div>
   <ul id="b-list"></ul>
   <div class="row" style="justify-content: flex-end"><button id="b-cancel">取消</button><button class="primary" id="b-ok">選這個資料夾</button></div>
+</dialog>
+
+<dialog id="web-log-dialog">
+  <h2 id="wl-title" style="margin-bottom:4px">啟動日誌</h2>
+  <p class="hint" id="wl-meta" style="margin-top:0"></p>
+  <pre id="wl-body"></pre>
+  <div class="row" style="justify-content: flex-end; margin-top: 10px"><button id="wl-close">關閉</button></div>
 </dialog>
 
 <script>
@@ -450,9 +492,113 @@ async function loadOverview() {
   say("p-msg", "讀取中…");
   try {
     OVERVIEW = await api("GET", `/api/overview?root=${encodeURIComponent($("p-root").value)}`);
+    drawLauncher(OVERVIEW);
     drawProjects(OVERVIEW);
     say("p-msg", "");
   } catch (err) { say("p-msg", err.message, true); }
+}
+
+/**
+ * Draw the quick-launch cards for projects that expose a FastAPI web service.
+ * @param {object[]} rows Projects from /api/overview (with optional `web` metadata).
+ * @returns {void}
+ */
+function drawLauncher(rows) {
+  const services = rows.filter((r) => r.exists && r.web).map((r) => r.web);
+  const runningCount = services.filter((s) => s.running).length;
+  $("w-summary").textContent = `運行中 ${runningCount} / ${services.length}`;
+  $("w-summary").className = `chip ${runningCount ? "ok" : ""}`;
+  $("w-stop-all").hidden = !services.some((s) => s.running && s.managed);
+  if (!services.length) {
+    $("w-cards").innerHTML = "<span class='hint'>目前追蹤專案中未偵測到 FastAPI 網頁服務。</span>";
+    return;
+  }
+  $("w-cards").innerHTML = services.map((s) => {
+    const stateLabel = s.running ? (s.managed ? `運行中 (PID ${esc(s.pid)})` : "運行中（外部）") : "未啟動";
+    const chipCls = s.running ? "ok" : "";
+    const mainBtn = s.running
+      ? `<button class="small primary" data-web-open="${esc(s.url)}">開啟頁面</button>`
+      : `<button class="small primary" data-web-start="${esc(s.path)}" data-name="${esc(s.name)}">啟動並開啟</button>`;
+    const stopBtn = s.running && s.managed
+      ? `<button class="small" data-web-stop="${esc(s.path)}" data-name="${esc(s.name)}">停止</button>`
+      : "";
+    return `<div class="launcher-card">
+      <div>
+        <div class="launcher-card-head"><strong>${esc(s.name)}</strong><span class="chip ${chipCls}">${stateLabel}</span></div>
+        <div class="hint" style="margin-top:4px"><code>${esc(s.url)}</code></div>
+      </div>
+      <div class="row">${mainBtn}${stopBtn}<button class="small" data-web-log="${esc(s.path)}" data-name="${esc(s.name)}">Log</button></div>
+    </div>`;
+  }).join("");
+  wireLauncherButtons();
+}
+
+/**
+ * Open a project web server (starting it in the background if needed) and navigate to it.
+ * @param {string} path Absolute project folder.
+ * @param {string} name Project name for waiting screen and status text.
+ * @returns {Promise<void>} Resolves after launch and overview refresh.
+ */
+async function launchProjectWeb(path, name) {
+  say("w-msg", `正在啟動 ${name}…`);
+  const popup = window.open("about:blank", "_blank");
+  if (popup) {
+    popup.document.title = `正在啟動 ${name}…`;
+    popup.document.body.innerHTML = `<p style="font:16px sans-serif;padding:24px">正在啟動 <strong>${esc(name)}</strong>，請稍候…</p>`;
+  }
+  try {
+    const res = await api("POST", "/api/web/start", { path, root: $("p-root").value, confirm: true });
+    if (popup && !popup.closed) popup.location.href = res.url;
+    else window.open(res.url, "_blank", "noopener");
+    await loadOverview();
+    say("w-msg", `${res.name} 已就緒：${res.url}`);
+  } catch (err) {
+    if (popup && !popup.closed) popup.close();
+    say("w-msg", err.message, true);
+    await loadOverview();
+  }
+}
+
+/**
+ * Stop one Hub-managed child project web service and refresh overview.
+ * @param {string} path Absolute project folder.
+ * @param {string} name Project name for feedback text.
+ * @returns {Promise<void>} Resolves after stop completes.
+ */
+async function stopProjectWeb(path, name) {
+  say("w-msg", `正在停止 ${name}…`);
+  try {
+    const res = await api("POST", "/api/web/stop", { path, root: $("p-root").value, confirm: true });
+    await loadOverview();
+    say("w-msg", `${res.name}：${res.message}`);
+  } catch (err) { say("w-msg", err.message, true); }
+}
+
+/**
+ * Open the modal log viewer for a child project's web launcher log.
+ * @param {string} path Absolute project folder.
+ * @param {string} name Project name.
+ * @returns {Promise<void>} Resolves when modal is displayed.
+ */
+async function openWebLogs(path, name) {
+  try {
+    const res = await api("GET", `/api/web/logs?path=${encodeURIComponent(path)}&root=${encodeURIComponent($("p-root").value)}`);
+    $("wl-title").textContent = `${name} — 啟動日誌`;
+    $("wl-meta").textContent = res.log_file;
+    $("wl-body").textContent = (res.lines || []).join("\n") || "（尚無啟動紀錄）";
+    $("web-log-dialog").showModal();
+  } catch (err) { say("w-msg", err.message, true); }
+}
+
+/**
+ * Bind click handlers inside the `#w-cards` quick launcher grid.
+ * @returns {void}
+ */
+function wireLauncherButtons() {
+  $("w-cards").querySelectorAll("[data-web-open]").forEach((b) => { b.onclick = () => window.open(b.dataset.webOpen, "_blank", "noopener"); });
+  $("w-cards").querySelectorAll("[data-web-start]").forEach((b) => { b.onclick = () => launchProjectWeb(b.dataset.webStart, b.dataset.name); });
+  $("w-cards").querySelectorAll("[data-web-stop]").forEach((b) => { b.onclick = () => stopProjectWeb(b.dataset.webStop, b.dataset.name); });
+  $("w-cards").querySelectorAll("[data-web-log]").forEach((b) => { b.onclick = () => openWebLogs(b.dataset.webLog, b.dataset.name); });
 }
 
 /**
@@ -486,16 +632,18 @@ function drawProjects(rows) {
   $("p-update-all").hidden = !updates;
   if (!rows.length) { $("p-table").innerHTML = "<tr><td class='hint'>還沒有用母版建立的專案。</td></tr>"; return; }
   const actions = [["status", "狀態"], ["doctor", "doctor"], ["doctor-fix", "doctor --fix"], ["check", "check"], ["setup", "安裝依賴"]];
-  $("p-table").innerHTML = "<tr><th>專案</th><th>框架</th><th>本機</th><th>GitHub</th><th>建議</th><th>AI 工具</th><th>動作</th></tr>" + rows.map((r) => {
+  $("p-table").innerHTML = "<tr><th>專案</th><th>Web</th><th>框架</th><th>本機</th><th>GitHub</th><th>建議</th><th>AI 工具</th><th>動作</th></tr>" + rows.map((r) => {
     if (!r.exists) {
       return `<tr><td><strong>${esc(r.name)}</strong><br><span class="hint">${esc(r.path)}</span></td>
-        <td colspan="5"><span class="chip bad">找不到資料夾（可能已搬移或刪除）</span></td>
+        <td colspan="6"><span class="chip bad">找不到資料夾（可能已搬移或刪除）</span></td>
         <td><button class="small" data-forget="${esc(r.path)}">從清單移除</button></td></tr>`;
     }
     const update = UPDATES[r.path];
+    const webCell = r.web ? `<span class="chip ${r.web.running ? "ok" : ""}">:${esc(r.web.port)} ${r.web.running ? "開" : "關"}</span>` : `<span class="hint">—</span>`;
     return `<tr><td><strong>${esc(r.name)}</strong> <span class="hint">${esc([r.stack, ...(r.addons || [])].filter(Boolean).join(" + "))}</span>
       ${r.source === "registry" ? ` <span class="chip">其他位置</span>` : ""}<br><span class="hint">${esc(r.path)}</span>
       <br><span class="hint">${esc(r.last_commit)}</span></td>
+      <td>${webCell}</td>
       <td>v${esc(r.version)}${update ? `<br><span class="chip ${update.startsWith("可更新") ? "warn" : "ok"}">${esc(update)}</span>` : ""}</td>
       <td>${r.dirty ? `<span class="chip warn">${r.dirty} 個未 commit</span>` : `<span class="chip ok">乾淨</span>`}</td>
       <td>${githubChip(r)}</td>
@@ -582,6 +730,16 @@ async function init() {
     loadOverview();
   });
   $("p-scan").onclick = loadOverview;
+  $("w-refresh").onclick = loadOverview;
+  $("wl-close").onclick = () => $("web-log-dialog").close();
+  $("w-stop-all").onclick = async () => {
+    if (!confirm("要停止所有由總控台啟動的子專案網頁服務以釋放記憶體嗎？")) return;
+    try {
+      const res = await api("POST", "/api/web/stop-all", { root: $("p-root").value, confirm: true });
+      await loadOverview();
+      say("w-msg", `已停止 ${res.stopped.length} 個子專案服務${res.skipped.length ? `（略過 ${res.skipped.length} 個外部啟動）` : ""}`);
+    } catch (err) { say("w-msg", err.message, true); }
+  };
   $("p-check-updates").onclick = () => startJob("/api/update/preview", { root: $("p-root").value }, "p-msg", (job) => rememberUpdates(job.result));
   $("p-update-all").onclick = () => {
     if (!confirm("更新所有「可更新」的專案？專案改過的檔案不會被覆蓋（另存 *.template），有未 commit 修改的專案會略過，不會推送。")) return;

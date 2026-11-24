@@ -20,6 +20,8 @@
 | GET | `/api/feedback?root=&all=1` | 各專案 `docs/TEMPLATE_FEEDBACK.md` 的建議（`all=1` 含已決定的） |
 | GET | `/api/job` | 目前或上一個工作：`title`、`state`（running / done / failed）、`log`、`result` |
 | GET | `/api/dirs?path=` | 子資料夾清單（網頁內建的資料夾瀏覽器用） |
+| GET | `/api/web/services?root=` | 列出具 FastAPI 網頁的追蹤專案與即時運行狀態（`port`、`url`、`running`、`managed`、`pid`） |
+| GET | `/api/web/logs?project=&lines=80` | 讀取由母版啟動之專案網頁最近日誌 |
 
 ## 動作（POST，JSON）
 
@@ -37,5 +39,8 @@
 | `/api/registry/forget` | `path` | 從總覽移除登記（不動資料夾） |
 | `/api/pick-folder` | `prompt`、`start` | 開啟 macOS 資料夾選擇視窗，回傳 `path`（取消時為空） |
 | `/api/reveal` | `path` | 在 Finder 打開資料夾 |
+| `/api/web/start` | `project` / `path`、`root`、`confirm` | 在背景啟動該專案 FastAPI 並等埠號就緒（需 `confirm=true`） |
+| `/api/web/stop` | `project` / `path`、`root`、`confirm` | 停止由母版啟動的該專案網頁（需 `confirm=true`） |
+| `/api/web/stop-all` | `root`、`confirm` | 停止所有由母版啟動的子專案網頁釋放記憶體（需 `confirm=true`） |
 
 錯誤：400（欄位錯誤，`detail` 說明原因）、403（不是本機請求）、409（已有工作在執行）、428（需要 confirm）。

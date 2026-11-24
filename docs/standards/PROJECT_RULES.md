@@ -27,3 +27,25 @@
 
 - 不要在 `docs/standards/` 放只適用母版的內容（會被複製到每個專案）；母版專屬的寫在本檔。
 - 不要讓 `src/project_template/` 以外的地方 import 母版程式；框架檔案不可依賴 `src/`。
+
+## 5. 本機總控台與各專案網頁啟動速查（免搜尋直跑）
+
+使用者在 Antigravity / Claude Code 要求開啟或關閉母版或子專案網頁時，**直接執行以下單一指令，勿多餘翻找檔案**：
+
+| 需求 | 單一指令 |
+|---|---|
+| 背景啟動母版總控台（`http://127.0.0.1:8766`，就緒開瀏覽器並立即返回） | `python3 scripts/hub.py start` |
+| 關閉總控台（含 `--all` 一併關閉子專案網頁） | `python3 scripts/hub.py stop` / `python3 scripts/hub.py stop --all` |
+| 查看總控台與各子專案網頁燈號、PID | `python3 scripts/hub.py status` |
+| 啟動並開啟單一專案網頁 | `python3 scripts/hub.py launch <專案名>` |
+| 停止單一或全部由總控台啟動的子專案網頁 | `python3 scripts/hub.py stop-project <專案名>` / `python3 scripts/hub.py stop-all` |
+| 開啟 / 關閉總控台 macOS 登入自動常駐（`launchd`） | `python3 scripts/hub.py autostart on` / `python3 scripts/hub.py autostart off` |
+
+目前作用中（Active）追蹤專案的固定埠號與實際啟動指令（總控台按需背景喚起，閒置不佔記憶體）：
+
+- `01 project_template` 總控台 (`http://127.0.0.1:8766`)：`python3 scripts/hub.py start`（或前景 `python3 scripts/web_ui.py`）
+- `literature-parser` (`http://127.0.0.1:8767`)：`uv run literature-parser web --port 8767 --no-open`
+- `notebooklm-batch-studio` (`http://127.0.0.1:8768`)：`uv run notebooklm-batch-studio-web`
+- `video-studio` (`http://127.0.0.1:8772`)：`uv run video-studio-api`
+- `literature-fetch` (`8765`)、`note-studio` (`8771`) 已於 `.local/projects.json` / `.agents/project.toml` 標記為 `terminated`（整併至 `notebooklm-batch-studio`），總控台會依 `tracked_projects()` 自動排除；`ndhu-course-rush` 為純 CLI 專案。
+- 日誌與 PID 存放位置：`<DATA_DIR>/hub/`（不進 git）

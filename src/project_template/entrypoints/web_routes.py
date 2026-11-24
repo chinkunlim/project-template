@@ -205,7 +205,7 @@ def page() -> FileResponse:
     Returns:
         index.html.
     """
-    return FileResponse(WEB_PAGE)
+    return FileResponse(WEB_PAGE, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/info")

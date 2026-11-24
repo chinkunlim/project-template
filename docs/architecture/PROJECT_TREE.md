@@ -112,6 +112,7 @@ project_template/
 │   │   ├── _TEMPLATE.md                    # 已知問題範本 (tracker_cli 會套用)
 │   │   └── KNOWN_ISSUES.md                 # 已知問題總表 (🔴/🟡/🟢)
 │   ├── specs/                              # [功能規格書] PRD / API Contract
+│   │   ├── 001-project-web-launcher.md
 │   │   ├── _TEMPLATE.md                    # 規格範本
 │   │   └── SPECS.md                        # 規格清單
 │   ├── standards/                          # [工程規範] 依任務載入 (Progressive Disclosure)
@@ -149,6 +150,7 @@ project_template/
 ├── scripts/                                # 【專案腳本】agentctl.py 是框架的單一入口；其餘放本專案自己的腳本
 │   ├── agentctl.py                         # [單一入口] 轉呼叫 .agents/bin/agentctl.py
 │   ├── collect_feedback.py
+│   ├── hub.py
 │   ├── init_project.py
 │   ├── migrate_project.py
 │   ├── sync_github_skills.py
@@ -172,12 +174,14 @@ project_template/
 │       │   │   └── index.html
 │       │   ├── __init__.py
 │       │   ├── feedback_cli.py
+│       │   ├── hub_cli.py
 │       │   ├── init_cli.py
 │       │   ├── migrate_cli.py
 │       │   ├── openwebui_tool.py
 │       │   ├── skills_sync_cli.py
 │       │   ├── template_mcp.py
 │       │   ├── update_all_cli.py
+│       │   ├── web_launcher_routes.py
 │       │   ├── web_routes.py
 │       │   └── web_ui.py
 │       ├── packs/
@@ -205,14 +209,18 @@ project_template/
 │       ├── services/
 │       │   ├── __init__.py
 │       │   ├── feedback.py
+│       │   ├── hub_manager.py
 │       │   ├── migration.py
 │       │   ├── scaffold.py
 │       │   ├── template_service.py
-│       │   └── update_all.py
+│       │   ├── update_all.py
+│       │   ├── web_launcher.py
+│       │   └── web_process.py
 │       └── __init__.py
 ├── tests/                                  # 【測試層】單元與整合測試
 │   ├── test_framework.py
-│   └── test_tier1_tier2.py
+│   ├── test_tier1_tier2.py
+│   └── test_web_launcher.py
 ├── .editorconfig
 ├── .env.example                            # [設定範本] 環境變數清單與預設值說明
 ├── .gitignore                              # [版控排除] 排除依賴、機密 .env、憑證與執行期快取

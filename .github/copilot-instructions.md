@@ -26,6 +26,12 @@
 | 「出版本」「專案完成了」 | `python3 scripts/agentctl.py finish`（驗收清單）；要發布再加 `--tag`（Unreleased → 新版本 + 本機 tag） |
 | 「做一個網頁」「給 Open WebUI / Ollama / Agent 用」 | **先依 [`LOCAL_AI_ENVIRONMENT.md`](../docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 確認需求**並請使用者確認摘要，再做 FastAPI + MCP（核心規則 13）；專案沒有 `api` 時先問使用者 |
 | 「架構合規嗎」「檢查架構」「專案健檢」「全面掃描」「有沒有更新」 | `python3 scripts/agentctl.py scan` |
+| 「啟動母版網頁」「開啟總控台」「啟動網頁」 | `python3 scripts/hub.py start`（背景啟動 `http://127.0.0.1:8766`、就緒後開瀏覽器並立即返回） |
+| 「關閉母版網頁」「停止總控台」 | `python3 scripts/hub.py stop`（加 `--all` 一併停止所有子專案網頁） |
+| 「查看網頁狀態」「哪些網頁開著」 | `python3 scripts/hub.py status` |
+| 「啟動 <專案名> 網頁」「開啟 <專案名>」 | `python3 scripts/hub.py launch <專案名>`（未啟動則背景啟動並開啟頁面） |
+| 「停止 <專案名> 網頁」「停止全部子網頁」 | `python3 scripts/hub.py stop-project <專案名>` / `python3 scripts/hub.py stop-all` |
+| 「開啟 / 關閉總控台開機常駐」 | `python3 scripts/hub.py autostart on` / `python3 scripts/hub.py autostart off` |
 | 「環境怪怪的」「換電腦了」 | `python3 scripts/agentctl.py doctor --fix` |
 
 ## 2. 核心規則（必須遵守）

@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 project-template-init = "project_template.entrypoints.init_cli:main"
 project-template-web = "project_template.entrypoints.web_ui:main"
+project-template-hub = "project_template.entrypoints.hub_cli:main"
 project-template-mcp = "project_template.entrypoints.template_mcp:main"
 
 [dependency-groups]

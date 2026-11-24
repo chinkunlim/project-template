@@ -46,6 +46,7 @@ from project_template.config.framework import FRAMEWORK_VERSION
 from project_template.config.logging_setup import run_command
 from project_template.config.settings import env_value
 from project_template.entrypoints.template_mcp import build_template_mcp
+from project_template.entrypoints.web_launcher_routes import router as web_launcher_router
 from project_template.entrypoints.web_routes import ERROR_HANDLERS, operation_id, router
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,7 @@ def create_app(port: int = DEFAULT_PORT, extra_hosts: list[str] | None = None, o
     for error, handler in ERROR_HANDLERS.items():
         app.add_exception_handler(error, handler)
     app.include_router(router)
+    app.include_router(web_launcher_router)
     app.router.routes.extend(mcp_routes)
     return app
 

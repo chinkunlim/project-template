@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -136,3 +137,69 @@ def log_settings() -> tuple[str, Path | None]:
     level = env_value("LOG_LEVEL") or dotenv.get("LOG_LEVEL", "") or "INFO"
     to_file = env_value("LOG_TO_FILE") or dotenv.get("LOG_TO_FILE", "") or "true"
     return level, (data_dir() / "logs" if to_file.lower() not in ("0", "false", "no") else None)
+
+
+def hub_state_dir() -> Path:
+    """Return the external directory storing Hub and child web launcher PIDs and logs.
+
+    Returns:
+        `<data_dir>/hub`, outside the template repository.
+    """
+    return data_dir() / "hub"
+
+
+def launch_agent_plist() -> Path:
+    """Return the macOS LaunchAgent plist path for Hub autostart.
+
+    Returns:
+        `TEMPLATE_LAUNCHAGENT_PLIST` when set (used by tests), else `~/Library/LaunchAgents/com.project-template.hub.plist`.
+    """
+    override = env_value("TEMPLATE_LAUNCHAGENT_PLIST")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / "Library" / "LaunchAgents" / "com.project-template.hub.plist"
+
+
+def launch_agent_override_active() -> bool:
+    """Return whether tests overrode the LaunchAgent plist path.
+
+    Returns:
+        True when `TEMPLATE_LAUNCHAGENT_PLIST` is set.
+    """
+    return bool(env_value("TEMPLATE_LAUNCHAGENT_PLIST"))
+
+
+def resolve_uv() -> str:
+    """Locate the `uv` executable even under minimal launchd `PATH` environments.
+
+    Returns:
+        Absolute path to `uv`, or `"uv"` as fallback.
+    """
+    found = shutil.which("uv")
+    if found:
+        return found
+    candidates = [
+        Path("/opt/homebrew/bin/uv"),
+        Path("/usr/local/bin/uv"),
+        Path.home() / ".local" / "bin" / "uv",
+    ]
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return "uv"
+
+
+def launcher_env() -> dict[str, str]:
+    """Build subprocess environment for launching child project servers without template `DATA_DIR`.
+
+    Returns:
+        Environment dict with `DATA_DIR` stripped and standard Homebrew/uv binary directories in `PATH`.
+    """
+    env = child_env()
+    current_path = env.get("PATH", "")
+    parts = [p for p in current_path.split(os.pathsep) if p]
+    for extra in (str(Path.home() / ".local" / "bin"), "/opt/homebrew/bin", "/usr/local/bin"):
+        if extra not in parts:
+            parts.insert(0, extra)
+    env["PATH"] = os.pathsep.join(parts)
+    return env

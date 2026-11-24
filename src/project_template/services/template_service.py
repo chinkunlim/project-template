@@ -40,7 +40,7 @@ from project_template.packs.stack_config import (
     resolve_stack,
 )
 from project_template.services import feedback as collect_feedback
-from project_template.services import update_all
+from project_template.services import update_all, web_launcher
 
 logger = logging.getLogger(__name__)
 SCRIPTS = TEMPLATE_ROOT / "scripts"
@@ -525,6 +525,7 @@ def project_status(project: Path) -> dict[str, Any]:
         "last_commit": _git(project, "log", "-1", "--format=%h %cs %s"),
         "open_feedback": len([x for x in suggestions if collect_feedback.is_open(x)]),
         "mcp": (project / ".mcp.json").exists(),
+        "web": web_launcher.service_status(project),
     }
 
 
