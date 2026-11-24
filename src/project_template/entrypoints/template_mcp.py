@@ -5,34 +5,69 @@ Purpose:
       - stdio: `python3 scripts/template_mcp.py` — Claude Code (`.mcp.json`), Claude Desktop,
         Antigravity (`.agents/mcp_config.json`), OpenCode (`opencode.json`), Cursor, VS Code;
       - Streamable HTTP: `http://127.0.0.1:8766/mcp` while `python3 scripts/web_ui.py` runs
-        (Open WebUI → Admin → Integrations → External Tool Servers → MCP (Streamable HTTP)).
+        (Open WebUI -> Admin -> Integrations -> External Tool Servers -> MCP (Streamable HTTP)).
 
-    Least privilege: read-only tools answer directly; tools that change something (create, migrate,
-    register an existing project, `doctor-fix`, `setup`, update, push) only describe the commands they would run unless `confirm=True`,
+    Least privilege: read-only tools answer directly; tools that change something need `confirm=True`,
     so an agent must ask the user first.
-
-Dependencies:
-    The launcher needs no `.venv`. When `fastapi` / `mcp` are missing, `config.runtime.ensure_dependencies()`
-    re-runs it through `uv run --with ...` (a cached environment managed by uv, nothing installed on
-    the host). uv's progress goes to stderr, so the stdio channel stays clean.
-
-Usage:
-    python3 scripts/template_mcp.py
 """
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from project_template.config.framework import FRAMEWORK_VERSION
 from project_template.config.logging_setup import run_command
+from project_template.entrypoints.template_mcp_hub import HUB_TOOLS
 from project_template.services import template_service as ts
-from project_template.services import web_launcher as wl
 
 logger = logging.getLogger(__name__)
 
-WRITE_COMMANDS = {"doctor-fix", "setup"}
+WRITE_COMMANDS = {"doctor-fix", "setup", "sync"}
+MCP_INSTRUCTIONS = (
+    "Create, migrate and maintain projects with the user's project template. Read-only tools can be "
+    "called freely. Tools with `confirm` change files: call them first without confirm, show the "
+    "user what will run, and call again with confirm=True only after the user agrees."
+)
+
+
+@dataclass
+class CreateProjectOptions:
+    """Optional configuration passed to `create_project()`.
+
+    Attributes:
+        stack: python, node, gas, go, rust, generic, both, all or mobile.
+        addons: Add-ons such as web, gas, mobile, api, db, ollama, evals.
+        data_dir: Absolute data folder; empty = projects-data/<name>.
+        description: One-line description.
+        skills: Optional extra skills, e.g. legacy-migration.
+        install: Also install dependencies inside the project (needs internet).
+        http_port: Explicit FastAPI HTTP port when `api` add-on is enabled.
+    """
+
+    stack: str = "python"
+    addons: list[str] = field(default_factory=list)
+    data_dir: str = ""
+    description: str = ""
+    skills: list[str] = field(default_factory=list)
+    install: bool = False
+    http_port: int | None = None
+
+
+@dataclass
+class MigrateProjectOptions:
+    """Optional configuration passed to `migrate_project()`.
+
+    Attributes:
+        folder: Absolute folder for the new project; empty = default projects folder.
+        mode: maintain (keep Flask) or develop (rewrite Flask as FastAPI).
+        data_dir: Absolute data folder; empty = projects-data/<name>.
+    """
+
+    folder: str = ""
+    mode: str = "maintain"
+    data_dir: str = ""
 
 
 def _pending(title: str, steps: list[Any]) -> str:
@@ -88,8 +123,7 @@ def list_projects(folder: str = "") -> list[dict[str, Any]]:
 
 
 def project_overview(folder: str = "") -> list[dict[str, Any]]:
-    """Track every project made with the template: framework version, uncommitted files, commits not yet pushed
-    to GitHub, open template suggestions, whether AI tools (MCP) are configured. Read only.
+    """Track every project made with the template: version, git state, tasks, Graphify, web service and MCP. Read only.
 
     Args:
         folder: Folder to scan; empty = the folder that contains the template (registered projects are added).
@@ -112,15 +146,15 @@ def push_project(project: str, folder: str = "", confirm: bool = False) -> str:
         The command (without confirm) or the push output.
     """
     path = project if project.startswith("/") else next(
-        (p["path"] for p in ts.overview(ts.resolve_root(folder)) if p["name"] == project and p.get("exists")), "")
+        (p["path"] for p in ts.overview(ts.resolve_root(folder)) if p["name"] == project and p.get("exists")),
+        "",
+    )
     title, steps = ts.push_steps({"path": path})
     return _run(title, steps) if confirm else _pending(title, steps)
 
 
 def register_project(path: str, confirm: bool = False) -> str:
-    """Add an existing project folder (made with the template, possibly outside the projects folder) to the
-    registry, so the overview, feedback and framework update include it. Folders without
-    .agents/framework.lock + scripts/agentctl.py are refused (use migrate_project for old projects).
+    """Add an existing project folder made with the template to the registry.
 
     Args:
         path: Absolute project folder.
@@ -140,7 +174,6 @@ def register_project(path: str, confirm: bool = False) -> str:
 
 def refresh_remote_status(project: str = "", folder: str = "") -> str:
     """Run `git fetch` in one or every tracked project so project_overview's ahead / behind counts are current.
-    Only remote-tracking refs change (no files, no commits, no push).
 
     Args:
         project: Absolute project folder; empty = every tracked project with a git remote.
@@ -168,49 +201,66 @@ def preview_data_folder(name: str, folder: str = "", data_dir: str = "") -> dict
     return ts.data_preview({"name": name, "parent": folder or str(ts.projects_root()), "data_dir": data_dir})
 
 
-def create_project(name: str, stack: str = "python", addons: list[str] | None = None, folder: str = "",
-                   data_dir: str = "", description: str = "", skills: list[str] | None = None,
-                   install: bool = False, confirm: bool = False) -> str:
+def create_project(
+    name: str,
+    folder: str = "",
+    options: CreateProjectOptions | None = None,
+    confirm: bool = False,
+) -> str:
     """Create a new project (folders, docs, agent rules, git with a first commit), then repair its environment.
 
     Args:
         name: Project and folder name.
-        stack: python, node, gas, go, rust, generic, both, all or mobile.
-        addons: Add-ons such as web, gas, mobile, api, db, ollama, evals (a web page means api).
         folder: Absolute folder to create it in; empty = default projects folder.
-        data_dir: Absolute data folder; empty = projects-data/<name>.
-        description: One-line description.
-        skills: Optional extra skills, e.g. legacy-migration.
-        install: Also install dependencies inside the project (needs internet).
+        options: Optional `CreateProjectOptions` (stack, addons, data_dir, description, skills, install, http_port).
         confirm: Must be True to actually create it (after the user agreed).
 
     Returns:
         The commands (without confirm) or the job result.
     """
-    body = {"name": name, "parent": folder or str(ts.projects_root()), "data_dir": data_dir, "stack": stack,
-            "addons": addons or [], "skills": skills or [], "description": description, "doctor": True,
-            "setup": install, "check": True}
+    opts = options or CreateProjectOptions()
+    body = {
+        "name": name,
+        "parent": folder or str(ts.projects_root()),
+        "data_dir": opts.data_dir,
+        "stack": opts.stack,
+        "addons": opts.addons,
+        "skills": opts.skills,
+        "description": opts.description,
+        "doctor": True,
+        "setup": opts.install,
+        "check": True,
+        "http_port": opts.http_port,
+    }
     title, steps = ts.create_steps(body)
     return _run(title, steps) if confirm else _pending(title, steps)
 
 
-def migrate_project(source: str, name: str = "", folder: str = "", mode: str = "maintain", data_dir: str = "",
-                    confirm: bool = False) -> str:
+def migrate_project(
+    source: str,
+    name: str = "",
+    options: MigrateProjectOptions | None = None,
+    confirm: bool = False,
+) -> str:
     """Move an old project into a new folder that follows the template (the old project is never changed).
 
     Args:
         source: Absolute folder of the old project (it must be committed).
         name: New project name; empty = the old folder name.
-        folder: Absolute folder for the new project; empty = default projects folder.
-        mode: maintain (finished project, keep Flask) or develop (continue, rewrite Flask as FastAPI).
-        data_dir: Absolute data folder; empty = projects-data/<name>.
+        options: Optional `MigrateProjectOptions` (folder, mode, data_dir).
         confirm: Must be True to actually migrate (after the user agreed).
 
     Returns:
         The commands (without confirm) or the job result.
     """
-    body = {"source": source, "name": name or Path(source.rstrip("/")).name, "mode": mode, "data_dir": data_dir,
-            "parent": folder or str(ts.projects_root())}
+    opts = options or MigrateProjectOptions()
+    body = {
+        "source": source,
+        "name": name or Path(source.rstrip("/")).name,
+        "mode": opts.mode,
+        "data_dir": opts.data_dir,
+        "parent": opts.folder or str(ts.projects_root()),
+    }
     title, steps = ts.migrate_steps(body)
     return _run(title, steps) if confirm else _pending(title, steps)
 
@@ -220,15 +270,17 @@ def run_project_command(project: str, command: str = "status", folder: str = "",
 
     Args:
         project: Project name (from list_projects) or absolute path.
-        command: status, doctor, check (read only) or doctor-fix, setup (change files: need confirm).
+        command: status, scan, graph, doctor, check (read only) or doctor-fix, setup, sync (need confirm).
         folder: Folder to look the name up in; empty = default projects folder.
-        confirm: Must be True for doctor-fix and setup.
+        confirm: Must be True for doctor-fix, setup and sync.
 
     Returns:
         The command output.
     """
     path = project if project.startswith("/") else next(
-        (p["path"] for p in ts.list_projects(ts.resolve_root(folder)) if p["name"] == project), "")
+        (p["path"] for p in ts.list_projects(ts.resolve_root(folder)) if p["name"] == project),
+        "",
+    )
     title, steps = ts.project_command_steps({"path": path, "command": command})
     if command in WRITE_COMMANDS and not confirm:
         return _pending(title, steps)
@@ -284,92 +336,6 @@ def get_job_status() -> dict[str, Any] | None:
     return ts.job_view(ts.RUNNER.current)
 
 
-def list_web_services(folder: str = "") -> list[dict[str, Any]]:
-    """List every tracked project with a FastAPI web service and its live listening state. Read only.
-
-    Args:
-        folder: Projects folder to scan; empty = template's parent folder plus registry.
-
-    Returns:
-        List of project web descriptors (`name`, `port`, `url`, `running`, `managed`, `pid`).
-    """
-    return wl.list_web_services(ts.resolve_root(folder))
-
-
-def start_project_web(project: str, folder: str = "", confirm: bool = False) -> dict[str, Any] | str:
-    """Start one project's FastAPI web server in the background until ready. Needs confirm=True.
-
-    Args:
-        project: Tracked project name or absolute path.
-        folder: Projects folder when passing project name; empty = default.
-        confirm: Must be True after asking the user to confirm.
-
-    Returns:
-        Confirmation prompt when `confirm=False`, or updated status dictionary with `url`.
-    """
-    target = wl.resolve_project_path(project, ts.resolve_root(folder))
-    spec = wl.discover_web_service(target)
-    if spec is None:
-        raise ValueError(f"`{target.name}` 沒有設定網頁服務")
-    if not confirm:
-        cmd_str = " ".join(spec.command)
-        return (
-            f"Not run yet — start `{spec.name}` web server at {spec.url} via `{cmd_str}` "
-            f"(in `{spec.path}`). Ask the user and call again with confirm=True."
-        )
-    return wl.start_project_web(target)
-
-
-def stop_project_web(project: str, folder: str = "", confirm: bool = False) -> dict[str, Any] | str:
-    """Stop one Hub-managed child project's web server cleanly. Needs confirm=True.
-
-    Args:
-        project: Tracked project name or absolute path.
-        folder: Projects folder when passing project name; empty = default.
-        confirm: Must be True after asking the user to confirm.
-
-    Returns:
-        Confirmation prompt when `confirm=False`, or stop result dictionary.
-    """
-    target = wl.resolve_project_path(project, ts.resolve_root(folder))
-    if not confirm:
-        return f"Not run yet — stop `{target.name}` web server. Call again with confirm=True after asking the user."
-    return wl.stop_project_web(target)
-
-
-def stop_all_project_webs(folder: str = "", confirm: bool = False) -> dict[str, Any] | str:
-    """Stop every Hub-managed child project web server to free host memory. Needs confirm=True.
-
-    Args:
-        folder: Projects folder; empty = default.
-        confirm: Must be True after asking the user to confirm.
-
-    Returns:
-        Confirmation prompt when `confirm=False`, or summary of stopped/skipped services.
-    """
-    root = ts.resolve_root(folder)
-    if not confirm:
-        running = [s["name"] for s in wl.list_web_services(root) if s["running"] and s["managed"]]
-        return f"Not run yet — stop managed web servers: {', '.join(running) or 'none'}. Call with confirm=True after user agrees."
-    return wl.stop_all_project_webs(root)
-
-
-def get_project_web_logs(project: str, lines: int = 80, folder: str = "") -> dict[str, Any]:
-    """Read trailing startup/runtime log lines for one child project's web server. Read only.
-
-    Args:
-        project: Tracked project name or absolute path.
-        lines: Maximum trailing log lines to return (default 80).
-        folder: Projects folder when passing project name; empty = default.
-
-    Returns:
-        Dictionary with `name`, `log_file`, and `lines`.
-    """
-    target = wl.resolve_project_path(project, ts.resolve_root(folder))
-    return wl.read_web_logs(target, lines=lines)
-
-
-# Every tool the server offers (the function name is the MCP tool name).
 TOOLS = (
     describe_options,
     list_projects,
@@ -385,11 +351,7 @@ TOOLS = (
     preview_framework_update,
     apply_framework_update,
     get_job_status,
-    list_web_services,
-    start_project_web,
-    stop_project_web,
-    stop_all_project_webs,
-    get_project_web_logs,
+    *HUB_TOOLS,
 )
 
 
@@ -401,13 +363,7 @@ def build_template_mcp() -> Any:
     """
     from mcp.server import MCPServer
 
-    server = MCPServer(
-        "project-template",
-        instructions=("Create, migrate and maintain projects with the user's project template. Read-only tools can be "
-                      "called freely. Tools with `confirm` change files: call them first without confirm, show the "
-                      "user what will run, and call again with confirm=True only after the user agrees."),
-        version=FRAMEWORK_VERSION,
-    )
+    server = MCPServer("project-template", instructions=MCP_INSTRUCTIONS, version=FRAMEWORK_VERSION)
     for tool in TOOLS:
         server.tool()(tool)
     return server

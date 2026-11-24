@@ -37,6 +37,30 @@ def main(argv: list[str] | None = None) -> int:
     return run_command("migrate_project", _main, argv)
 
 
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """Parse CLI arguments for migrating an existing project.
+
+    Args:
+        argv: Arguments list or None for `sys.argv[1:]`.
+
+    Returns:
+        Parsed CLI namespace.
+    """
+    parser = argparse.ArgumentParser(description="把舊專案搬進用模板建立的新資料夾（保留 git 歷史，產生遷移計畫）")
+    parser.add_argument("--from", dest="old", required=True, help="舊專案資料夾")
+    parser.add_argument("--target", required=True, help="新專案資料夾（不可已存在）")
+    parser.add_argument("--name", default=None, help="專案名稱（預設為新資料夾名稱）")
+    parser.add_argument("--stack", choices=STACK_CHOICES, default=None, help="主要語言（預設自動偵測）")
+    parser.add_argument("--with", dest="addons", nargs="*", choices=ADDON_CHOICES, default=None, help="附加：web / gas（預設自動偵測）")
+    parser.add_argument("--skills", nargs="*", default=[], help="額外安裝的 optional skills")
+    parser.add_argument(
+        "--mode", choices=["maintain", "develop"], default="maintain",
+        help="maintain：舊專案已完工，保留 Flask；develop：要繼續開發，Flask 全部改成 FastAPI",
+    )
+    parser.add_argument("--data-dir", default=None, help="資料資料夾（預設 ../../projects-data/<名稱>）")
+    return parser.parse_args(argv)
+
+
 def _main(argv: list[str] | None) -> int:
     """Do the work of `main()` (logging is already set up).
 
@@ -46,25 +70,17 @@ def _main(argv: list[str] | None) -> int:
     Returns:
         Process exit code.
     """
-    parser = argparse.ArgumentParser(description="把舊專案搬進用模板建立的新資料夾（保留 git 歷史，產生遷移計畫）")
-    parser.add_argument("--from", dest="old", required=True, help="舊專案資料夾")
-    parser.add_argument("--target", required=True, help="新專案資料夾（不可已存在）")
-    parser.add_argument("--name", default=None, help="專案名稱（預設為新資料夾名稱）")
-    parser.add_argument("--stack", choices=STACK_CHOICES, default=None, help="主要語言（預設自動偵測）")
-    parser.add_argument("--with", dest="addons", nargs="*", choices=ADDON_CHOICES, default=None, help="附加：web / gas（預設自動偵測）")
-    parser.add_argument("--skills", nargs="*", default=[], help="額外安裝的 optional skills")
-    parser.add_argument("--mode", choices=["maintain", "develop"], default="maintain",
-                        help="maintain：舊專案已完工，保留 Flask；develop：要繼續開發，Flask 全部改成 FastAPI")
-    parser.add_argument("--data-dir", default=None, help="資料資料夾（預設 ../../projects-data/<名稱>）")
-    args = parser.parse_args(argv)
+    args = _parse_args(argv)
     old = Path(args.old).expanduser().resolve()
     target = Path(args.target).expanduser().resolve()
     if not old.is_dir():
         print(f"❌ 找不到舊專案：{old}", file=sys.stderr)
         return 1
     try:
-        options = {"stack": args.stack, "addons": args.addons, "name": args.name, "skills": args.skills, "mode": args.mode,
-                   "data_dir": Path(args.data_dir) if args.data_dir else None}
+        options = {
+            "stack": args.stack, "addons": args.addons, "name": args.name, "skills": args.skills,
+            "mode": args.mode, "data_dir": Path(args.data_dir) if args.data_dir else None,
+        }
         count = migrate(old, target, options)
     except (FileExistsError, RuntimeError, subprocess.CalledProcessError) as exc:
         logger.error("migrate failed %s -> %s: %s", old, target, exc, extra=FILE_ONLY)

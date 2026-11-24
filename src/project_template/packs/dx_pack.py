@@ -80,6 +80,39 @@ def _json(data: dict[str, Any]) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
+def _python_vscode_parts(pkg: str, dist: str) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
+    """Build Python-specific VS Code settings, extensions, and launch configs.
+
+    Args:
+        pkg: Python package name (used by debug configurations).
+        dist: Distribution name (CLI command name).
+
+    Returns:
+        Tuple of `(settings_patch, extensions, launch_configs)`.
+    """
+    settings = {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.testing.unittestEnabled": True,
+        "python.testing.unittestArgs": ["-s", "tests", "-p", "test_*.py"],
+        "[python]": {
+            "editor.defaultFormatter": "charliermarsh.ruff",
+            "editor.formatOnSave": True,
+            "editor.codeActionsOnSave": {"source.organizeImports": "explicit"},
+        },
+    }
+    extensions = ["ms-python.python", "charliermarsh.ruff", "ms-python.mypy-type-checker"]
+    configs = [{
+        "name": f"{dist}: CLI",
+        "type": "debugpy",
+        "request": "launch",
+        "module": f"{pkg}.entrypoints.cli",
+        "args": ["--name", "Debug"],
+        "envFile": "${workspaceFolder}/.env",
+        "console": "integratedTerminal",
+    }]
+    return settings, extensions, configs
+
+
 def vscode_files(languages: list[str], pkg: str, dist: str) -> dict[str, str]:
     """Build the `.vscode/` files for the project's languages.
 
@@ -95,19 +128,19 @@ def vscode_files(languages: list[str], pkg: str, dist: str) -> dict[str, str]:
     extensions = ["editorconfig.editorconfig"]
     configs: list[dict[str, Any]] = []
     if "python" in languages:
-        settings.update({
-            "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-            "python.testing.unittestEnabled": True,
-            "python.testing.unittestArgs": ["-s", "tests", "-p", "test_*.py"],
-            "[python]": {"editor.defaultFormatter": "charliermarsh.ruff", "editor.formatOnSave": True,
-                         "editor.codeActionsOnSave": {"source.organizeImports": "explicit"}},
-        })
-        extensions += ["ms-python.python", "charliermarsh.ruff", "ms-python.mypy-type-checker"]
-        configs.append({"name": f"{dist}: CLI", "type": "debugpy", "request": "launch", "module": f"{pkg}.entrypoints.cli",
-                        "args": ["--name", "Debug"], "envFile": "${workspaceFolder}/.env", "console": "integratedTerminal"})
+        py_settings, py_exts, py_cfgs = _python_vscode_parts(pkg, dist)
+        settings.update(py_settings)
+        extensions += py_exts
+        configs += py_cfgs
     if "api" in languages:
-        configs.append({"name": f"{dist}: API server (127.0.0.1)", "type": "debugpy", "request": "launch",
-                        "module": f"{pkg}.entrypoints.http.server", "envFile": "${workspaceFolder}/.env", "console": "integratedTerminal"})
+        configs.append({
+            "name": f"{dist}: API server (127.0.0.1)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": f"{pkg}.entrypoints.http.server",
+            "envFile": "${workspaceFolder}/.env",
+            "console": "integratedTerminal",
+        })
     if {"node", "gas", "web", "mobile"} & set(languages):
         extensions.append("dbaeumer.vscode-eslint")
     if "mobile" in languages:

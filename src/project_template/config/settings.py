@@ -189,6 +189,26 @@ def resolve_uv() -> str:
     return "uv"
 
 
+def resolve_graphify() -> str | None:
+    """Locate the global `graphify` CLI binary installed per ADR-005.
+
+    Returns:
+        Absolute path to `graphify` executable, or None if not installed.
+    """
+    found = shutil.which("graphify")
+    if found:
+        return found
+    candidates = [
+        Path.home() / ".local" / "bin" / "graphify",
+        Path("/opt/homebrew/bin/graphify"),
+        Path("/usr/local/bin/graphify"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def launcher_env() -> dict[str, str]:
     """Build subprocess environment for launching child project servers without template `DATA_DIR`.
 

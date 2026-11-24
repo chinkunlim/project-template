@@ -15,7 +15,7 @@
 | 方法 | 路徑 | 回傳 |
 |---|---|---|
 | GET | `/api/info` | 框架版本、母版位置、預設專案資料夾、可選的 stack / 附加功能 / skills |
-| GET | `/api/overview?root=` | 總覽：資料夾裡的專案＋登記過的專案；框架版本、未 commit、未推送 / 落後（以上次 fetch 為準）、待決定建議、是否有 MCP、找不到的專案 |
+| GET | `/api/overview?root=` | 總覽：資料夾裡的專案＋登記過的專案；框架版本、未 commit、未推送 / 落後（以上次 fetch 為準）、待辦任務卡數（`tasks`）、Graphify 圖譜狀態（`graphify`）、待決定建議、是否有 MCP、Web 狀態、找不到的專案 |
 | GET | `/api/projects?root=` | 追蹤的專案（資料夾＋登記清單）：名稱、路徑、框架版本、未 commit 檔案數、最後 commit |
 | GET | `/api/feedback?root=&all=1` | 各專案 `docs/TEMPLATE_FEEDBACK.md` 的建議（`all=1` 含已決定的） |
 | GET | `/api/job` | 目前或上一個工作：`title`、`state`（running / done / failed）、`log`、`result` |
@@ -28,9 +28,12 @@
 | 路徑 | 內容 | 說明 |
 |---|---|---|
 | `/api/data-preview` | `name`、`parent`、`data_dir`（選填） | 資料資料夾的實際位置與會寫入的設定值（相對路徑寫 `.env.example`；外接硬碟只寫 `.env`） |
-| `/api/create` | `name`、`parent`、`data_dir`、`stack`、`addons[]`、`skills[]`、`description`、`license`（`MIT`）、`timezone`、`doctor`、`setup`、`check` | 建立專案；之後依選項執行 `doctor --fix`、`setup --install`、`check`（202 + 執行的指令） |
+| `/api/create` | `name`、`parent`、`data_dir`、`stack`、`addons[]`、`skills[]`、`description`、`license`（`MIT`）、`timezone`、`doctor`、`setup`、`check`、`http_port` | 建立專案；`--with api` 未填埠號時自動避開已用埠號並寫入 `[web]`（202 + 執行的指令） |
 | `/api/migrate` | `source`、`name`、`parent`、`data_dir`、`mode`（`maintain` / `develop`）、`stack`、`addons[]` | 遷移舊專案（舊專案不會被修改），再執行 `doctor --fix` |
-| `/api/project-command` | `path`、`command`（`status` / `doctor` / `doctor-fix` / `setup` / `check`） | 在專案內執行 `agentctl` 指令 |
+| `/api/project-command` | `path`、`command`（`status` / `scan` / `graph` / `doctor` / `doctor-fix` / `setup` / `sync` / `check`） | 在專案內執行 `agentctl` 指令（`doctor-fix` / `setup` / `sync` 需 `confirm=true`） |
+| `/api/projects/graphify` | `project` / `path`、`root`、`include_master` | 對單一或全部追蹤專案執行 `agentctl graph` ＋ `graphify update .`（202 + 背景工作，完成後結果於 `/api/job`） |
+| `/api/feedback/add` | `project` / `path`、`root`、`text`、`source`、`status`、`confirm` | 直接新增一列建議至目標專案（或 `master`）的 `docs/TEMPLATE_FEEDBACK.md`（需 `confirm=true`） |
+| `/api/feedback/status` | `file`、`text`、`date`、`status`、`confirm` | 原地更新 `docs/TEMPLATE_FEEDBACK.md` 某列建議之狀態（`待決定` / `已採用` / `不採用`，需 `confirm=true`） |
 | `/api/update/preview` | `root` | 預覽所有專案的框架更新（不修改）；結果在 `/api/job` 的 `result` |
 | `/api/update/apply` | `root`、`commit`（預設 true） | 更新可更新的專案（母版要先 commit；有衝突或 check 失敗不 commit） |
 | `/api/push` | `path`、`confirm` | 把專案的 commit 推送到它的 GitHub 遠端分支（需要 confirm；沒有 upstream 會回 400） |

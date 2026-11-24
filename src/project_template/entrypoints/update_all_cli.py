@@ -62,6 +62,25 @@ def main(argv: list[str] | None = None) -> int:
     return run_command("update_all", _main, argv)
 
 
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """Parse CLI options for batch framework update.
+
+    Args:
+        argv: Arguments list or None for `sys.argv[1:]`.
+
+    Returns:
+        Parsed CLI namespace.
+    """
+    parser = argparse.ArgumentParser(description="一次更新所有專案的框架（預設只預覽）")
+    parser.add_argument("roots", nargs="*", help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}＋登記清單）")
+    parser.add_argument("--registered", action="store_true", help="指定資料夾時，也加入登記清單中的專案（.local/projects.json）")
+    parser.add_argument("--depth", type=int, default=3, help="專案最多在幾層子資料夾內（預設 3）")
+    parser.add_argument("--apply", action="store_true", help="真的更新（預設只預覽）")
+    parser.add_argument("--yes", action="store_true", help="不再詢問確認（搭配 --apply）")
+    parser.add_argument("--no-commit", action="store_true", help="更新後不自動 commit")
+    return parser.parse_args(argv)
+
+
 def _main(argv: list[str] | None) -> int:
     """Do the work of `main()` (logging is already set up).
 
@@ -71,14 +90,7 @@ def _main(argv: list[str] | None) -> int:
     Returns:
         Process exit code.
     """
-    parser = argparse.ArgumentParser(description="一次更新所有專案的框架（預設只預覽）")
-    parser.add_argument("roots", nargs="*", help=f"放專案的資料夾（預設：母版所在的資料夾 {DEFAULT_ROOT}＋登記清單）")
-    parser.add_argument("--registered", action="store_true", help="指定資料夾時，也加入登記清單中的專案（.local/projects.json）")
-    parser.add_argument("--depth", type=int, default=3, help="專案最多在幾層子資料夾內（預設 3）")
-    parser.add_argument("--apply", action="store_true", help="真的更新（預設只預覽）")
-    parser.add_argument("--yes", action="store_true", help="不再詢問確認（搭配 --apply）")
-    parser.add_argument("--no-commit", action="store_true", help="更新後不自動 commit")
-    args = parser.parse_args(argv)
+    args = _parse_args(argv)
     if is_dirty(TEMPLATE_ROOT):
         logger.warning("update_all stopped: template has uncommitted changes", extra=FILE_ONLY)
         print("❌ 母版有未 commit 的修改：先 commit 母版，專案才能記錄拿到的是哪個版本。", file=sys.stderr)

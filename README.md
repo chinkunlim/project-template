@@ -27,11 +27,14 @@
 python3 scripts/hub.py start
 ```
 
-常用總控台控制指令（啟動子專案、查看狀態、關閉釋放記憶體、設定 macOS 開機常駐）：
+常用總控台控制指令（啟動子專案、查看狀態、跨專案更新 Graphify / 合規掃描 / 寫入改進建議、關閉釋放記憶體、設定 macOS 開機常駐）：
 
 ```bash
 python3 scripts/hub.py status
 python3 scripts/hub.py launch video-studio
+python3 scripts/hub.py graphify
+python3 scripts/hub.py scan
+python3 scripts/hub.py feedback-add video-studio "補充建議內容"
 python3 scripts/hub.py stop-all
 python3 scripts/hub.py stop
 python3 scripts/hub.py autostart on

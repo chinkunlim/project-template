@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -20,6 +21,7 @@ from project_template.config.settings import launcher_env
 
 logger = logging.getLogger(__name__)
 _MANAGED_PROCS: dict[int, subprocess.Popen[bytes]] = {}
+_NEXT_PORT_RE = re.compile(r"下一個可用的埠號[^0-9]*(\d{4,5})")
 
 
 def port_listening(port: int, timeout: float = 0.25) -> bool:
@@ -189,3 +191,27 @@ def spawn_logged(
     _MANAGED_PROCS[proc.pid] = proc
     logger.debug("spawned pid=%s cwd=%s banner=%s", proc.pid, cwd, banner)
     return proc
+
+
+def parse_ports_md(ports_file: Path) -> tuple[set[int], int | None]:
+    """Read used TCP ports and the next-free hint from `PORTS.md`.
+
+    Args:
+        ports_file: Path to `00 init_dev_env/PORTS.md`.
+
+    Returns:
+        Tuple of `(used_ports, next_hint)` where `next_hint` may be None.
+    """
+    if not ports_file.is_file():
+        return set(), None
+    text = ports_file.read_text(encoding="utf-8", errors="replace")
+    used: set[int] = set()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or stripped.startswith("|---") or stripped.startswith("| 埠號"):
+            continue
+        first_cell = stripped.split("|", 2)[1]
+        used.update(int(tok) for tok in re.findall(r"\b(\d{4,5})\b", first_cell) if 1 <= int(tok) <= 65535)
+    hint_match = _NEXT_PORT_RE.search(text)
+    hint = int(hint_match.group(1)) if hint_match and 1 <= int(hint_match.group(1)) <= 65535 else None
+    return used, hint

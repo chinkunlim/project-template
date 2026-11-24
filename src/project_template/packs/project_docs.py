@@ -263,6 +263,62 @@ README_GUIDES = (
 )
 
 
+def _readme_env_phrases(langs: list[str]) -> tuple[str, str, str]:
+    """Compute doctor/install/python environment phrases for `README.md`.
+
+    Args:
+        langs: Active stack and add-on language identifiers.
+
+    Returns:
+        Tuple of `(doctor_what, install_what, python_note)`.
+    """
+    has_js = bool({"node", "gas", "mobile"} & set(langs))
+    tools = [
+        name for name, needed in (
+            ("uv", "python" in langs),
+            ("Node / pnpm", has_js),
+            ("Xcode / Android SDK", "mobile" in langs),
+        ) if needed
+    ]
+    mobile_env = " 與 `mobile/.env`" if "mobile" in langs else ""
+    doctor_what = f"啟用 git hook、建立 `.env`{mobile_env}、建立 DATA_DIR、檢查 {'、'.join(tools)}（只修這個專案，不安裝全域工具）"
+    install_items = [
+        label for label, needed in (
+            ("uv sync（專案內 `.venv/`）", "python" in langs),
+            ("pnpm install（各資料夾內的 `node_modules/`）", has_js),
+        ) if needed
+    ]
+    python_note = (
+        "\n新增 Python 套件：`uv add <套件>`（開發工具 `uv add --dev <套件>`）；執行程式：`uv run ...`。"
+        "Python 版本由 uv 依 `.python-version` 自動下載，不會動到主機的 Python / pip。\n"
+        if "python" in langs
+        else ""
+    )
+    return doctor_what, "、".join(install_items), python_note
+
+
+def _readme_optional_blocks(settings: dict[str, Any], install_what: str, guides: list[str]) -> tuple[str, str, str]:
+    """Render conditional install, test, and guide Markdown sections for `README.md`.
+
+    Args:
+        settings: Output of `project_settings()`.
+        install_what: Joined dependency-install phrase (empty if none).
+        guides: Bulleted Markdown links to stack/add-on guides.
+
+    Returns:
+        Tuple of `(install_block, test_block, guides_block)`.
+    """
+    test_cmd = settings.get("test")
+    test_block = f"\n專案測試\n\n```bash\n{test_cmd}\n```\n" if test_cmd else ""
+    install_block = (
+        f"\n4. 安裝依賴：{install_what}\n\n```bash\npython3 scripts/agentctl.py setup --install\n```\n"
+        if install_what
+        else ""
+    )
+    guides_block = "\n## 各部分說明\n\n" + "\n".join(guides) + "\n" if guides else ""
+    return install_block, test_block, guides_block
+
+
 def build_readme_md(project_name: str, description: str, settings: dict[str, Any] | None = None) -> str:
     """Render the starter `README.md` for humans: setup on a new computer, daily use, guides.
 
@@ -277,37 +333,25 @@ def build_readme_md(project_name: str, description: str, settings: dict[str, Any
     settings = settings or {"languages": [], "test": ""}
     langs = settings["languages"]
     pkg = slugify_package_name(project_name)
-    doctor_what = "啟用 git hook、建立 `.env`" + (" 與 `mobile/.env`" if "mobile" in langs else "") + "、建立 DATA_DIR、檢查 " + "、".join(
-        t for t, need in (("uv", "python" in langs), ("Node / pnpm", bool({"node", "gas", "mobile"} & set(langs))),
-                          ("Xcode / Android SDK", "mobile" in langs)) if need) + "（只修這個專案，不安裝全域工具）"
-    install_what = "、".join(t for t, need in (("uv sync（專案內 `.venv/`）", "python" in langs),
-                                             ("pnpm install（各資料夾內的 `node_modules/`）", bool({"node", "gas", "mobile"} & set(langs)))) if need)
-    guides = [f"- [`{path.format(pkg=pkg)}`]({path.format(pkg=pkg)}) — {desc}" for key, path, desc in README_GUIDES if key in langs[1:]]
+    doctor_what, install_what, python_note = _readme_env_phrases(langs)
+    guides = [
+        f"- [`{path.format(pkg=pkg)}`]({path.format(pkg=pkg)}) — {desc}"
+        for key, path, desc in README_GUIDES
+        if key in langs[1:]
+    ]
     if langs[:1] == ["gas"]:
-        guides.insert(0, "- [`GAS.md`](GAS.md) — Google Apps Script（測試、打包、clasp 推送）")  # gas as the base stack lives at the root
-    python_note = (
-        "\n新增 Python 套件：`uv add <套件>`（開發工具 `uv add --dev <套件>`）；執行程式：`uv run ...`。"
-        "Python 版本由 uv 依 `.python-version` 自動下載，不會動到主機的 Python / pip。\n" if "python" in langs else ""
-    )
-    test_block = f"""
-專案測試
-
-```bash
-{settings["test"]}
-```
-""" if settings.get("test") else ""
-    install_block = f"""
-4. 安裝依賴：{install_what}
-
-```bash
-python3 scripts/agentctl.py setup --install
-```
-""" if install_what else ""
+        guides.insert(0, "- [`GAS.md`](GAS.md) — Google Apps Script（測試、打包、clasp 推送）")
+    install_block, test_block, guides_block = _readme_optional_blocks(settings, install_what, guides)
     mobile_env_note = "；App 的設定在 `mobile/.env`（會打包進 App，不放秘密）" if "mobile" in langs else ""
-    guides_block = "\n## 各部分說明\n\n" + "\n".join(guides) + "\n" if guides else ""
     return README_TEMPLATE.format(
-        project_name=project_name, description=description, doctor_what=doctor_what, mobile_env_note=mobile_env_note,
-        install_block=install_block, python_note=python_note, test_block=test_block, guides_block=guides_block,
+        project_name=project_name,
+        description=description,
+        doctor_what=doctor_what,
+        mobile_env_note=mobile_env_note,
+        install_block=install_block,
+        python_note=python_note,
+        test_block=test_block,
+        guides_block=guides_block,
     )
 
 

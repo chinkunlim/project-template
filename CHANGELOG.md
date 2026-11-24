@@ -29,6 +29,7 @@ The template's version is the framework version that projects record in `.agents
 - feat(web): integrate Google Chrome Modern Web Guidance standard and document installed Antigravity plugins (by `@antigravity`)
 - feat(registry): exclude projects marked `status = "terminated"` from tracked projects and bulk updates (by `@antigravity`)
 - feat(registry): support terminated project status in tracked_projects (by `@antigravity`)
+- feat(hub): clear all review warnings and add master-child live linkage (by `@antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)

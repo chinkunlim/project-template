@@ -82,7 +82,8 @@ def generate_stack_files(target_dir: Path, project_name: str, settings: dict[str
     if uses_node:
         write_file(target_dir / ".nvmrc", toolchain["node"] + "\n")
     if base == "python":
-        scaffold_python_pack(target_dir, project_name, description, settings["addons"])
+        py_opts = {"addons": settings["addons"], "http_port": options.get("http_port", "8000")}
+        scaffold_python_pack(target_dir, project_name, description, py_opts)
     elif base == "node":
         scaffold_node_pack(target_dir, project_name, description, toolchain.get("pnpm", ""))
     elif base == "gas":

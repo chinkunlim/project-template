@@ -53,7 +53,7 @@ from project_template.packs.migration_plan import (
     render_migration_md,
 )
 from project_template.packs.stack_config import data_dir_setting
-from project_template.services.scaffold import scaffold_project
+from project_template.services.scaffold import ScaffoldOptions, scaffold_project
 
 AGENT = "migrate_project"
 COPY_IGNORE = shutil.ignore_patterns(
@@ -302,8 +302,10 @@ def write_plan(target: Path, source: dict[str, Any]) -> int:
     data_dir = source.get("data_dir") or data_dir_setting(target, target.name)[0]  # relative to the new project
     risks = find_risks(target, entries)
     if source.get("data_paths") and source["history"] == "kept":
-        risks.append(f"🟡 舊的 git 歷史仍含 {len(source['data_paths'])} 個資料檔（repo 體積大、可能有著作權資料）："
-                     "若要推送到 GitHub，先評估用 `git filter-repo` 清除歷史中的資料檔。")
+        risks.append(
+            f"🟡 舊的 git 歷史仍含 {len(source['data_paths'])} 個資料檔（repo 體積大、可能有著作權資料）："
+            "若要推送到 GitHub，先評估用 `git filter-repo` 清除歷史中的資料檔。"
+        )
     extras = {
         "batches": batches, "deps": dependency_commands(legacy), "env_keys": env_keys(legacy), "risks": risks,
         "data_moves": data_moves(source.get("data_paths", []), source["path"], data_dir),
@@ -340,6 +342,26 @@ def commit_all(target: Path, message: str) -> None:
     git(target, "commit", "-q", "-m", f"{message} [agent:{AGENT}]\n\n{TRAILERS}")
 
 
+def _prepare_source(old: Path, target: Path, mode: str) -> dict[str, Any]:
+    """Clone or copy `old` into `target/legacy/` and attach Flask detection flags.
+
+    Args:
+        old: Old project root folder.
+        target: Newly created target project folder.
+        mode: Migration mode (`maintain` or `develop`).
+
+    Returns:
+        Source metadata dictionary consumed by `write_plan()`.
+    """
+    if is_repo_root(old):
+        source = clone_with_history(old, target)
+    else:
+        target.mkdir()
+        source = copy_without_history(old, target)
+    source.update({"mode": mode, "uses_flask": "yes" if "flask" in detect_python_libraries(old) else "no"})
+    return source
+
+
 def migrate(old: Path, target: Path, options: dict[str, Any]) -> int:
     """Run the whole preparation.
 
@@ -364,18 +386,14 @@ def migrate(old: Path, target: Path, options: dict[str, Any]) -> int:
     detected_stack, detected_addons = detect_stack(old, mode)
     stack = options.get("stack") or detected_stack
     addons = options.get("addons") if options.get("addons") is not None else detected_addons
-    if is_repo_root(old):
-        source = clone_with_history(old, target)
-    else:
-        target.mkdir()
-        source = copy_without_history(old, target)
-    source.update({"mode": mode, "uses_flask": "yes" if "flask" in detect_python_libraries(old) else "no"})
-    scaffold_project(
-        target, options.get("name") or target.name, stack=stack, addons=addons,
-        extra_skills=sorted({"legacy-migration", *options.get("skills", [])}), init_git_repo=True, force=True,
-        data_dir=options.get("data_dir"),
+    source = _prepare_source(old, target, mode)
+    project_name = options.get("name") or target.name
+    scaffold_opts = ScaffoldOptions(
+        stack=stack, addons=addons, extra_skills=sorted({"legacy-migration", *options.get("skills", [])}),
+        init_git_repo=True, force=True, data_dir=options.get("data_dir"),
     )
-    source["data_dir"] = data_dir_setting(target, options.get("name") or target.name, options.get("data_dir"))[0]
+    scaffold_project(target, project_name, scaffold_opts)
+    source["data_dir"] = data_dir_setting(target, project_name, options.get("data_dir"))[0]
     if mode == "maintain":
         set_forbidden_imports(target, [])
     count = write_plan(target, source)

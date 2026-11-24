@@ -23,7 +23,7 @@ from project_template.services import update_all
 from project_template.services import web_process as wp
 
 logger = logging.getLogger(__name__)
-SCRIPT_LINE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=\s*['\"]")
+SCRIPT_LINE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=\s*['\"]([^'\"]+)['\"]")
 
 # Re-export process helpers used by callers/tests without breaking imports.
 port_listening = wp.port_listening
@@ -86,19 +86,19 @@ def _read_int(raw: object) -> int | None:
     return port if 1 <= port <= 65535 else None
 
 
-def _parse_pyproject_scripts(pyproject: Path) -> list[str]:
-    """Read entry script names declared under `[project.scripts]` in `pyproject.toml`.
+def _parse_pyproject_scripts(pyproject: Path) -> list[tuple[str, str]]:
+    """Read `(name, target)` entries declared under `[project.scripts]` in `pyproject.toml`.
 
     Args:
         pyproject: Path to `pyproject.toml`.
 
     Returns:
-        Ordered list of declared script names.
+        Ordered list of `(script_name, module_entrypoint)` pairs.
     """
     if not pyproject.is_file():
         return []
     in_scripts = False
-    names: list[str] = []
+    entries: list[tuple[str, str]] = []
     for raw_line in pyproject.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if line.startswith("["):
@@ -108,8 +108,8 @@ def _parse_pyproject_scripts(pyproject: Path) -> list[str]:
             continue
         match = SCRIPT_LINE_RE.match(line)
         if match:
-            names.append(match.group(1))
-    return names
+            entries.append((match.group(1), match.group(2)))
+    return entries
 
 
 def _detect_http_port(project: Path) -> int | None:
@@ -129,27 +129,75 @@ def _detect_http_port(project: Path) -> int | None:
     return None
 
 
-def _pick_script_command(project: Path, scripts: list[str], port: int) -> list[str] | None:
-    """Infer the FastAPI launch argv from declared `pyproject.toml` scripts.
+def _fallback_web_command(project: Path, port: int) -> list[str] | None:
+    """Infer a launch command from standard FastAPI module layouts when scripts are absent.
 
     Args:
         project: Project root directory.
-        scripts: Script names under `[project.scripts]`.
+        port: Discovered HTTP port.
+
+    Returns:
+        Launch argv list, or None when no FastAPI entrypoint file exists.
+    """
+    if (project / "scripts" / "web_ui.py").is_file():
+        return ["uv", "run", "python", "scripts/web_ui.py", "--port", str(port), "--no-browser"]
+    pkg = project.name.replace("-", "_")
+    http_dir = project / "src" / pkg / "entrypoints" / "http"
+    if (http_dir / "server.py").is_file():
+        return ["uv", "run", "python", "-m", f"{pkg}.entrypoints.http.server"]
+    if (http_dir / "app.py").is_file():
+        return ["uv", "run", "uvicorn", f"{pkg}.entrypoints.http.app:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port)]
+    return None
+
+
+def _pick_script_command(project: Path, scripts: list[tuple[str, str]], port: int) -> list[str] | None:
+    """Infer the FastAPI launch argv from declared `pyproject.toml` scripts or entrypoint modules.
+
+    Args:
+        project: Project root directory.
+        scripts: `(name, target)` pairs under `[project.scripts]`.
         port: Discovered HTTP port.
 
     Returns:
         Launch argv list, or None when the project has no web server script.
     """
     for suffix in ("-web", "-server", "-api"):
-        for name in scripts:
-            if name.endswith(suffix):
+        for name, target in scripts:
+            if name.endswith(suffix) and ".cli:" not in target and not target.endswith(".cli"):
                 return ["uv", "run", name]
     src_dir = project / "src"
-    if not (src_dir.is_dir() and any(src_dir.rglob("web_app.py")) and scripts):
-        return None
-    target_norm = project.name.replace("_", "-").lower()
-    primary = next((s for s in scripts if s.replace("_", "-").lower() == target_norm), scripts[0])
-    return ["uv", "run", primary, "web", "--port", str(port), "--no-open"]
+    if src_dir.is_dir() and any(src_dir.rglob("web_app.py")) and scripts:
+        target_norm = project.name.replace("_", "-").lower()
+        primary = next((s for s, _t in scripts if s.replace("_", "-").lower() == target_norm), scripts[0][0])
+        return ["uv", "run", primary, "web", "--port", str(port), "--no-open"]
+    return _fallback_web_command(project, port)
+
+
+def allocate_http_port(projects_root: Path, requested: int | None = None) -> int:
+    """Select an unused loopback HTTP port using `00 init_dev_env/PORTS.md` and tracked projects.
+
+    Args:
+        projects_root: Folder containing sibling projects (and optional `00 init_dev_env/PORTS.md`).
+        requested: Explicit override port when chosen by the caller.
+
+    Returns:
+        Port number in 1..65535 (`8000` in isolated workspaces without `PORTS.md` or collisions).
+    """
+    if requested is not None and 1 <= requested <= 65535:
+        return requested
+    ports_md = projects_root / "00 init_dev_env" / "PORTS.md"
+    used_ports, next_hint = wp.parse_ports_md(ports_md)
+    for project in update_all.tracked_projects([projects_root], 3):
+        spec = discover_web_service(project)
+        if spec is not None:
+            used_ports.add(spec.port)
+    used_ports |= {8080, 8766}
+    if not ports_md.is_file() and 8000 not in used_ports:
+        return 8000
+    candidate = max(8767, next_hint or 8767)
+    while candidate in used_ports and candidate < 65535:
+        candidate += 1
+    return candidate
 
 
 def _from_toml_web(project: Path) -> WebServiceSpec | None:

@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -57,12 +58,42 @@ from project_template.packs.stack_config import (
     data_dir_setting,
     project_settings,
 )
+from project_template.services.web_launcher import allocate_http_port
 
-__all__ = ["ADDON_CHOICES", "DEFAULT_DESCRIPTION", "STACK_CHOICES", "scaffold_project", "skill_catalog"]
+__all__ = ["ADDON_CHOICES", "DEFAULT_DESCRIPTION", "STACK_CHOICES", "ScaffoldOptions", "scaffold_project", "skill_catalog"]
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DESCRIPTION = "AI-assisted software project with standard structure and agent handoff."
+
+
+@dataclass(frozen=True)
+class ScaffoldOptions:
+    """Parameters controlling how a new project is scaffolded.
+
+    Attributes:
+        stack: One of `STACK_CHOICES` (`both` / `all` are aliases for python + add-ons).
+        addons: Add-ons from `ADDON_CHOICES`.
+        description: One-line project description.
+        extra_skills: Optional skills to add on top of core and stack skills.
+        timezone: IANA time zone for GAS; detected from this computer when omitted.
+        license_kind: `MIT` writes a LICENSE file; `none` (default) grants no license.
+        init_git_repo: Initialise git, set `core.hooksPath` and make the first commit.
+        force: Allow scaffolding into a non-empty folder (no automatic commit then).
+        data_dir: Explicit data folder; None defaults to `../../projects-data/<name>`.
+        http_port: Explicit HTTP port for `--with api`; auto-allocated when None.
+    """
+
+    stack: str = "python"
+    addons: list[str] | None = None
+    description: str = DEFAULT_DESCRIPTION
+    extra_skills: list[str] | None = None
+    timezone: str | None = None
+    license_kind: str = "none"
+    init_git_repo: bool = True
+    force: bool = False
+    data_dir: Path | None = None
+    http_port: int | None = None
 
 
 def _write_file(path: Path, content: str) -> None:
@@ -103,9 +134,10 @@ def write_project_documents(target_dir: Path, project_name: str, settings: dict[
         target_dir: Project root directory.
         project_name: Project name.
         settings: Output of `project_settings()`.
-        extras: Dict with `description`, `skills` (installed skill names) and optional `data_dir`.
+        extras: Dict with `description`, `skills`, optional `data_dir`, and optional `http_port`.
     """
     langs = settings["languages"]
+    http_port = int(extras.get("http_port") or 8000)
     files = {
         ".agents/project.toml": build_project_toml(project_name, settings, extras["description"], extras["skills"]),
         ".agents/handoff/LATEST.md": build_handoff_md(FRAMEWORK_VERSION),
@@ -113,7 +145,7 @@ def write_project_documents(target_dir: Path, project_name: str, settings: dict[
         "README.md": build_readme_md(project_name, extras["description"], settings),
         "CHANGELOG.md": build_changelog_md(project_name, FRAMEWORK_VERSION),
         ".gitignore": build_gitignore(langs),
-        ".env.example": build_env_example(project_name, langs, extras.get("data_dir", "")),
+        ".env.example": build_env_example(project_name, langs, extras.get("data_dir", ""), http_port=http_port),
         ".github/workflows/ci.yml": build_ci_workflow(settings),
         **docs_skeleton(),
     }
@@ -192,35 +224,100 @@ def init_git(target_dir: Path, initial_commit: bool) -> None:
         logger.warning(f"⚠️ 初始 commit 未完成（請檢查 git user.name / user.email）：{res.stderr.strip()[:200]}")
 
 
+def _write_private_dotenv(target_dir: Path, data_value: str) -> None:
+    """Write untracked `.env` when `DATA_DIR` points to an external drive.
+
+    Args:
+        target_dir: Project root directory.
+        data_value: Absolute POSIX path for `DATA_DIR`.
+    """
+    example = (target_dir / ".env.example").read_text(encoding="utf-8")
+    _write_file(target_dir / ".env", re.sub(r"^DATA_DIR=.*$", f"DATA_DIR={data_value}", example, flags=re.M))
+
+
+def _resolve_options(options: ScaffoldOptions | None, kwargs: dict[str, Any]) -> ScaffoldOptions:
+    """Merge an explicit `ScaffoldOptions` instance with legacy keyword overrides.
+
+    Args:
+        options: Pre-built `ScaffoldOptions` object, or None.
+        kwargs: Legacy keyword fields accepted by `scaffold_project()`.
+
+    Returns:
+        Effective `ScaffoldOptions` instance.
+    """
+    base = options or ScaffoldOptions()
+    return replace(base, **kwargs) if kwargs else base
+
+
+def _attach_web_metadata(project_name: str, target_dir: Path, settings: dict[str, Any], requested_port: int | None) -> int:
+    """Allocate a non-colliding HTTP port and set `[web]` metadata when `api` add-on is active.
+
+    Args:
+        project_name: Project name.
+        target_dir: Resolved project root directory.
+        settings: Mutable settings dictionary from `project_settings()`.
+        requested_port: Optional caller-specified port override.
+
+    Returns:
+        Effective HTTP port (8000 when `api` is not enabled).
+    """
+    if "api" not in settings["addons"]:
+        return 8000
+    http_port = allocate_http_port(target_dir.parent, requested_port)
+    dist = re.sub(r"[^a-z0-9-]+", "-", project_name.lower()).strip("-") or "app"
+    settings["web_port"] = http_port
+    settings["web_command"] = ["uv", "run", f"{dist}-server"]
+    return http_port
+
+
+def _finalize_scaffold(
+    target_dir: Path,
+    project_name: str,
+    opts: ScaffoldOptions,
+    state: dict[str, Any],
+) -> list[str]:
+    """Install framework files, generate stack templates, lock deps, run sync, and init git.
+
+    Args:
+        target_dir: Resolved project root directory.
+        project_name: Project name.
+        opts: Resolved `ScaffoldOptions`.
+        state: Mutable dict holding `settings`, `http_port`, and `pre_existing` flag.
+
+    Returns:
+        Installed skill names.
+    """
+    settings, http_port, pre_existing = state["settings"], int(state["http_port"]), bool(state["pre_existing"])
+    skills = select_skills(load_catalog(TEMPLATE_ROOT), settings["languages"], opts.extra_skills or [])
+    data_value, shareable = data_dir_setting(target_dir, project_name, opts.data_dir)
+    extras = {"description": opts.description, "skills": skills, "data_dir": data_value if shareable else "", "http_port": http_port}
+    write_project_documents(target_dir, project_name, settings, extras)
+    if not shareable:
+        _write_private_dotenv(target_dir, data_value)
+    installed = install_files(target_dir, framework_file_map(TEMPLATE_ROOT, skills))
+    stack_opts = {"description": opts.description, "timezone": opts.timezone or detect_timezone(), "license": opts.license_kind, "http_port": str(http_port)}
+    generate_stack_files(target_dir, project_name, settings, stack_opts)
+    write_lock(target_dir, TEMPLATE_ROOT, FRAMEWORK_VERSION, skills, installed)
+    lock_python_dependencies(target_dir)
+    run_generators(target_dir)
+    if opts.init_git_repo:
+        init_git(target_dir, initial_commit=not pre_existing)
+    return skills
+
+
 def scaffold_project(
     target_dir: Path,
     project_name: str,
-    *,
-    stack: str = "python",
-    addons: list[str] | None = None,
-    description: str = DEFAULT_DESCRIPTION,
-    extra_skills: list[str] | None = None,
-    timezone: str | None = None,
-    license_kind: str = "none",
-    init_git_repo: bool = True,
-    force: bool = False,
-    data_dir: Path | None = None,
+    options: ScaffoldOptions | None = None,
+    **kwargs: Any,
 ) -> list[str]:
     """Create a complete project in `target_dir`.
 
     Args:
         target_dir: Destination folder (created when missing; must be empty unless `force`).
         project_name: Project name used in documents and package names.
-        stack: One of `STACK_CHOICES` (`both` / `all` are aliases for python + add-ons).
-        addons: Add-ons from `ADDON_CHOICES` (`web`, `gas`).
-        description: One-line project description.
-        extra_skills: Optional skills to add on top of core and stack skills.
-        timezone: IANA time zone for GAS; detected from this computer when omitted.
-        license_kind: `MIT` writes a LICENSE file; `none` (default) grants no license.
-        init_git_repo: Initialise git, set `core.hooksPath` and make the first commit.
-        force: Allow scaffolding into a non-empty folder (no automatic commit then).
-        data_dir: Data folder to use; None = `../../projects-data/<name>`. On the same drive it is
-            stored relative to the project; on another drive it goes only into the untracked `.env`.
+        options: `ScaffoldOptions` bundling stack, add-ons, skills, timezone, git, data dir, and port.
+        kwargs: Legacy keyword overrides matching `ScaffoldOptions` fields.
 
     Returns:
         Installed skill names.
@@ -229,27 +326,18 @@ def scaffold_project(
         FileExistsError: When `target_dir` is not empty and `force` is False.
         ValueError: When an unknown skill is requested.
     """
+    opts = _resolve_options(options, kwargs)
     target_dir = target_dir.resolve()
-    pre_existing = ensure_target_is_safe(target_dir, force)
-    settings = project_settings(project_name, stack, addons)
-    skills = select_skills(load_catalog(TEMPLATE_ROOT), settings["languages"], extra_skills or [])
+    pre_existing = ensure_target_is_safe(target_dir, opts.force)
+    settings = project_settings(project_name, opts.stack, opts.addons)
+    http_port = _attach_web_metadata(project_name, target_dir, settings, opts.http_port)
     target_dir.mkdir(parents=True, exist_ok=True)
-
-    data_value, shareable = data_dir_setting(target_dir, project_name, data_dir)
-    extras = {"description": description, "skills": skills, "data_dir": data_value if shareable else ""}
-    write_project_documents(target_dir, project_name, settings, extras)
-    if not shareable:  # an absolute path (other drive) is personal: only in the untracked .env
-        example = (target_dir / ".env.example").read_text(encoding="utf-8")
-        _write_file(target_dir / ".env", re.sub(r"^DATA_DIR=.*$", f"DATA_DIR={data_value}", example, flags=re.M))
-    installed = install_files(target_dir, framework_file_map(TEMPLATE_ROOT, skills))
-    options = {"description": description, "timezone": timezone or detect_timezone(), "license": license_kind}
-    generate_stack_files(target_dir, project_name, settings, options)
-    write_lock(target_dir, TEMPLATE_ROOT, FRAMEWORK_VERSION, skills, installed)
-    lock_python_dependencies(target_dir)
-    run_generators(target_dir)
-    if init_git_repo:
-        init_git(target_dir, initial_commit=not pre_existing)
-    return skills
+    return _finalize_scaffold(
+        target_dir,
+        project_name,
+        opts,
+        {"settings": settings, "http_port": http_port, "pre_existing": pre_existing},
+    )
 
 
 def skill_catalog() -> list[tuple[str, dict[str, Any]]]:

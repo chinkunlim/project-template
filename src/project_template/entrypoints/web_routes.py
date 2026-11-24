@@ -56,6 +56,7 @@ class CreateIn(BaseModel):
     doctor: bool = True
     setup: bool = False
     check: bool = False
+    http_port: int | None = Field(default=None, description="Optional HTTP port for --with api (auto-allocated when empty)")
     confirm: bool = Field(default=False, description="Must be true: the user agreed to create the project")
 
 
@@ -76,8 +77,8 @@ class CommandIn(BaseModel):
     """A framework command to run in one project."""
 
     path: str = Field(description="Absolute project folder")
-    command: str = Field(default="status", description="status, doctor, check, doctor-fix or setup")
-    confirm: bool = Field(default=False, description="Needed for doctor-fix and setup")
+    command: str = Field(default="status", description="status, scan, graph, doctor, check, doctor-fix, setup or sync")
+    confirm: bool = Field(default=False, description="Needed for doctor-fix, setup and sync")
 
 
 class UpdateIn(FolderIn):
@@ -353,7 +354,7 @@ def migrate_project(body: MigrateIn) -> dict[str, Any]:
 
 @router.post("/api/project-command", status_code=202)
 def run_project_command(body: CommandIn) -> dict[str, Any]:
-    """Run `agentctl <command>` in a project; doctor-fix and setup need confirm=true.
+    """Run `agentctl <command>` in a project; doctor-fix, setup and sync need confirm=true.
 
     Args:
         body: Project folder, command and confirmation.
@@ -361,7 +362,7 @@ def run_project_command(body: CommandIn) -> dict[str, Any]:
     Returns:
         The started job and its commands.
     """
-    if body.command in ("doctor-fix", "setup"):
+    if body.command in ("doctor-fix", "setup", "sync"):
         need_confirm(body.confirm, f"agentctl {body.command}")
     return started(*ts.project_command_steps(body.model_dump()))
 

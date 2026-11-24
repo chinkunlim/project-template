@@ -40,6 +40,9 @@
 | 啟動並開啟單一專案網頁 | `python3 scripts/hub.py launch <專案名>` |
 | 停止單一或全部由總控台啟動的子專案網頁 | `python3 scripts/hub.py stop-project <專案名>` / `python3 scripts/hub.py stop-all` |
 | 開啟 / 關閉總控台 macOS 登入自動常駐（`launchd`） | `python3 scripts/hub.py autostart on` / `python3 scripts/hub.py autostart off` |
+| 從母版直接更新子專案 AST + Graphify 圖譜 | `python3 scripts/hub.py graphify [專案]`（留空 = 全部追蹤專案；加 `--include-master` 含母版） |
+| 從母版直接掃描子專案架構合規分數 | `python3 scripts/hub.py scan [專案]`（留空 = 全部追蹤專案） |
+| 從母版直接新增建議到專案的 `TEMPLATE_FEEDBACK.md` | `python3 scripts/hub.py feedback-add <專案> "<建議內容>"`（可填 `master`） |
 
 目前作用中（Active）追蹤專案的固定埠號與實際啟動指令（總控台按需背景喚起，閒置不佔記憶體）：
 

@@ -1,19 +1,11 @@
 """
 title: 專案母版（Project template）
 author: limchinkun
-version: 0.2.0
-description: Create projects, migrate old projects, add existing projects, list projects, git fetch and run
-  doctor / check on them, collect template feedback and preview / apply the framework update, through the template's local web app
-  (python3 scripts/web_ui.py). Paste this file into Open WebUI → Workspace → Tools.
+version: 0.3.0
+description: Create projects, migrate old projects, add existing projects, list projects, manage web
+  servers, refresh Graphify graphs, inspect/edit feedback, and preview/apply framework updates through
+  the template's local web app (python3 scripts/web_ui.py). Paste into Open WebUI -> Workspace -> Tools.
 """
-
-# Open WebUI tool for the project template (same pattern as literature-fetch ADR-008).
-# It calls the JSON API of scripts/web_ui.py; nothing else is needed inside Open WebUI (standard library only).
-# Alternatives without pasting code: add http://127.0.0.1:8766 as an OpenAPI tool server, or (admin)
-# http://127.0.0.1:8766/mcp as an MCP (Streamable HTTP) connection.
-# Native Open WebUI (uv tool install, 127.0.0.1:8080): base_url http://127.0.0.1:8766 (default).
-# Open WebUI in Docker: base_url http://host.docker.internal:8766 and start the app with
-#   python3 scripts/web_ui.py --allow-host host.docker.internal
 
 from __future__ import annotations
 
@@ -28,6 +20,25 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+class CreateOptions(BaseModel):
+    """Optional fields for creating a project from Open WebUI."""
+
+    stack: str = Field(default="python", description="python, node, gas, go, rust, generic, both, all, mobile")
+    addons: str = Field(default="", description="Comma-separated add-ons: web, gas, mobile, api, db, ollama, evals")
+    folder: str = Field(default="", description="Absolute folder; empty = default projects folder")
+    data_dir: str = Field(default="", description="Absolute DATA_DIR; empty = projects-data/<name>")
+    description: str = Field(default="", description="One-line project description")
+    install: bool = Field(default=False, description="Also run setup --install (needs internet)")
+
+
+class MigrateOptions(BaseModel):
+    """Optional fields for migrating an old project from Open WebUI."""
+
+    name: str = Field(default="", description="New project name; empty = old folder name")
+    folder: str = Field(default="", description="Absolute folder for new project; empty = default")
+    mode: str = Field(default="maintain", description="maintain (keep Flask) or develop (rewrite as FastAPI)")
 
 
 class Tools:
@@ -110,92 +121,89 @@ class Tools:
 
     def list_projects(self) -> str:
         """
-        List the tracked projects (the projects folder plus registered projects elsewhere): name, framework version,
-        uncommitted files and last commit.
+        List the tracked projects: name, framework version, uncommitted files and last commit.
         :return: One line per project.
         """
         rows = self._call("GET", "/api/projects?" + self._root_query())
         if isinstance(rows, str):
             return rows
-        lines = [f"- {r['name']} (v{r['version']}, {'clean' if not r['dirty'] else str(r['dirty']) + ' uncommitted files'}) — "
-                 f"{r['last_commit']} — {r['path']}" for r in rows]
+        lines = [
+            f"- {r['name']} (v{r['version']}, {'clean' if not r['dirty'] else str(r['dirty']) + ' uncommitted'}) "
+            f"— {r['last_commit']} — {r['path']}"
+            for r in rows
+        ]
         return "\n".join(lines) or "No projects found."
 
-    def create_project(self, name: str, stack: str = "python", addons: str = "", folder: str = "", data_dir: str = "",
-                       description: str = "", install: bool = False, confirm: bool = False) -> str:
+    def create_project(self, name: str, options: CreateOptions | None = None, confirm: bool = False) -> str:
         """
-        Create a new project from the template (folders, docs, agent rules, git with a first commit), then repair its
-        environment. Runs in the background; ask for the job status afterwards.
+        Create a new project from the template (folders, docs, agent rules, git first commit). Runs in background.
         :param name: Project and folder name (letters, digits, Chinese, space, - _ .).
-        :param stack: python (default), node, gas, go, rust, generic, both (python+web), all (python+web+gas) or mobile.
-        :param addons: Comma-separated add-ons: web, gas, mobile, api, db, ollama, evals (api/db/ollama need python).
-        :param folder: Absolute folder to create the project in; empty = the projects folder.
-        :param data_dir: Absolute data folder; empty = projects-data/<name> next to the projects folder.
-        :param description: One-line description of the project.
-        :param install: Also install the dependencies inside the project (needs internet).
-        :param confirm: Must be True; first describe the project to the user and call with confirm=True after they agree.
+        :param options: Optional stack, comma-separated addons, folder, data_dir, description, install flag.
+        :param confirm: Must be True; first ask the user and call with confirm=True after they agree.
         :return: Whether the job started, with the commands it runs.
         """
+        opts = options or CreateOptions()
         if not confirm:
-            return (f"Not created yet. Tell the user: project '{name}' (stack {stack}, add-ons {addons or 'none'}) will be "
-                    "created with git, docs and agent rules. Call again with confirm=True after they agree.")
+            return (
+                f"Not created yet. Tell the user: project '{name}' (stack {opts.stack}, add-ons {opts.addons or 'none'}) "
+                "will be created with git, docs and agent rules. Call again with confirm=True after they agree."
+            )
         info = self._call("GET", "/api/info")
         if isinstance(info, str):
             return info
         body = {
-            "name": name, "parent": folder or self.valves.projects_folder or info["projects_root"], "data_dir": data_dir,
-            "stack": stack, "addons": [a.strip() for a in addons.split(",") if a.strip()], "description": description,
-            "doctor": True, "setup": install, "check": True, "confirm": True,
+            "name": name, "parent": opts.folder or self.valves.projects_folder or info["projects_root"],
+            "data_dir": opts.data_dir, "stack": opts.stack,
+            "addons": [a.strip() for a in opts.addons.split(",") if a.strip()],
+            "description": opts.description, "doctor": True, "setup": opts.install, "check": True, "confirm": True,
         }
         result = self._call("POST", "/api/create", body)
         if isinstance(result, str):
             return result
-        return f"Started: {result['title']}.\nCommands:\n" + "\n".join(result["commands"]) + "\nAsk for the job status to follow it."
+        return f"Started: {result['title']}.\nCommands:\n" + "\n".join(result["commands"]) + "\nAsk for job status to follow."
 
-    def migrate_project(self, source: str, name: str = "", folder: str = "", mode: str = "maintain",
-                        confirm: bool = False) -> str:
+    def migrate_project(self, source: str, options: MigrateOptions | None = None, confirm: bool = False) -> str:
         """
-        Migrate an old project into a new folder that follows the template. The old project is never changed; git history
-        is kept, old files go to legacy/ and docs/migration/MIGRATION.md lists the batches. Runs in the background.
+        Migrate an old project into a new folder that follows the template (the old project is untouched).
         :param source: Absolute folder of the old project (it must be committed).
-        :param name: New project name; empty = the old folder name.
-        :param folder: Absolute folder to create the new project in; empty = the projects folder.
-        :param mode: maintain (finished project, keep Flask) or develop (continue development, rewrite Flask as FastAPI).
-        :param confirm: Must be True; first tell the user what will happen and call with confirm=True after they agree.
+        :param options: Optional name, target folder, and mode (maintain or develop).
+        :param confirm: Must be True; first tell the user what will happen and call with confirm=True after approval.
         :return: Whether the job started.
         """
+        opts = options or MigrateOptions()
         if not confirm:
-            return (f"Not migrated yet. Tell the user {source} will be copied into a new project (the old one is not changed); "
-                    "call again with confirm=True after they agree.")
+            return (
+                f"Not migrated yet. Tell the user {source} will be copied into a new project "
+                "(the old one is not changed); call again with confirm=True after they agree."
+            )
         info = self._call("GET", "/api/info")
         if isinstance(info, str):
             return info
-        body = {"source": source, "name": name or source.rstrip("/").split("/")[-1],
-                "parent": folder or self.valves.projects_folder or info["projects_root"], "mode": mode, "confirm": True}
+        body = {
+            "source": source, "name": opts.name or source.rstrip("/").split("/")[-1],
+            "parent": opts.folder or self.valves.projects_folder or info["projects_root"],
+            "mode": opts.mode, "confirm": True,
+        }
         result = self._call("POST", "/api/migrate", body)
         return result if isinstance(result, str) else f"Started: {result['title']}. Ask for the job status to follow it."
 
     def register_project(self, path: str, confirm: bool = False) -> str:
         """
-        Add an existing project folder made with the template (for example one outside the projects folder, or cloned
-        from another computer) to the template's registry, so the overview, feedback and framework update include it.
-        Folders without .agents/framework.lock and scripts/agentctl.py are refused (use migrate_project for old projects).
-        The folder itself is not changed.
+        Add an existing template project folder outside the workspace to the project registry.
         :param path: Absolute project folder.
-        :param confirm: Must be True; first tell the user which folder will be added and call again after they agree.
+        :param confirm: Must be True; first tell the user which folder will be added and call again after approval.
         :return: Whether it was added.
         """
         result = self._call("POST", "/api/registry/add", {"path": path, "confirm": confirm})
         if isinstance(result, str):
             if result.startswith("Error 428"):
-                return f"Not added yet. Tell the user {path} will be added to the project registry; call again with confirm=True after they agree."
+                return f"Not added yet. Tell the user {path} will be added to the project registry; call again with confirm=True."
             return result
         return f"Added {result['path']}." if result["added"] else f"{result['path']} was already registered."
 
     def refresh_remote_status(self, project: str = "") -> str:
         """
-        Run git fetch in one project or every tracked project with a git remote, so the unpushed / behind counts in the
-        overview are current. Only remote-tracking refs change (no files, no commits, no push).
+        Run git fetch in one project or every tracked project with a git remote.
         :param project: Absolute project folder; empty = every tracked project.
         :return: The job output.
         """
@@ -208,7 +216,7 @@ class Tools:
 
     def get_job_status(self) -> str:
         """
-        Get the state and the last output lines of the current or last job (create, migrate, project command, update).
+        Get the state and the last output lines of the current or last job.
         :return: Title, state and recent output.
         """
         job = self._call("GET", "/api/job")
@@ -222,10 +230,10 @@ class Tools:
         """
         Run a framework command in one project and return its output.
         :param project: Project name (from list_projects) or absolute path.
-        :param command: status, doctor, check (read only), doctor-fix (repair) or setup (install dependencies).
+        :param command: status, scan, graph, doctor, check (read only) or doctor-fix, setup, sync (write).
         :return: The command output.
         """
-        if command in ("doctor-fix", "setup"):
+        if command in ("doctor-fix", "setup", "sync"):
             return f"`{command}` changes files; ask the user and run it from the template web page (or MCP with confirm)."
         path = project
         if not project.startswith("/"):
@@ -243,7 +251,7 @@ class Tools:
 
     def collect_feedback(self, include_decided: bool = False) -> str:
         """
-        List the template-improvement suggestions recorded in every project's docs/TEMPLATE_FEEDBACK.md (read only).
+        List the template-improvement suggestions recorded in every project's docs/TEMPLATE_FEEDBACK.md.
         :param include_decided: Also list suggestions already adopted or rejected.
         :return: One line per suggestion.
         """
@@ -266,13 +274,15 @@ class Tools:
         job = self._wait()
         if isinstance(job, str) or not job.get("result"):
             return job if isinstance(job, str) else "Preview did not finish; ask for the job status."
-        return "\n".join(f"- {r['name']}: v{r['current']} → v{r['target']}, update {r['update']}, add {r['add']}, "
-                         f"conflicts {r['conflict']}, removed {r['removed']} — {r['status']}" for r in job["result"])
+        return "\n".join(
+            f"- {r['name']}: v{r['current']} → v{r['target']}, update {r['update']}, add {r['add']}, "
+            f"conflicts {r['conflict']}, removed {r['removed']} — {r['status']}"
+            for r in job["result"]
+        )
 
     def apply_framework_update(self, confirm: bool = False, commit: bool = True) -> str:
         """
-        Update the framework of every project that can be updated. Project edits are never overwritten, projects with
-        uncommitted work are skipped, nothing is pushed. Only call with confirm=True after the user agreed to the preview.
+        Update the framework of every updatable project. Call with confirm=True only after user approval.
         :param confirm: Must be True; otherwise only the preview is returned.
         :param commit: Commit each cleanly updated project locally.
         :return: The result per project.
@@ -338,3 +348,46 @@ class Tools:
         if isinstance(res, str):
             return res
         return f"Stopped {len(res['stopped'])}, skipped {len(res['skipped'])}."
+
+    def refresh_project_graphify(self, project: str = "") -> str:
+        """
+        Update dependency graphs (agentctl graph) and Graphify knowledge graph in one or all tracked projects.
+        :param project: Project name, `master`, or absolute path; empty = all tracked projects.
+        :return: Job state and trailing output lines.
+        """
+        body = {"project": project, **({"root": self.valves.projects_folder} if self.valves.projects_folder else {})}
+        started = self._call("POST", "/api/projects/graphify", body)
+        if isinstance(started, str):
+            return started
+        self._wait(300)
+        return self.get_job_status()
+
+    def add_template_feedback(self, project: str, text: str, confirm: bool = False) -> str:
+        """
+        Append a template improvement suggestion into a project's docs/TEMPLATE_FEEDBACK.md.
+        :param project: Tracked project name, `master`, or absolute project path.
+        :param text: Suggestion text to add.
+        :param confirm: Must be True after asking the user to approve.
+        :return: Confirmation message or added row summary.
+        """
+        if not confirm:
+            return f"Not added yet. Ask the user to confirm adding feedback to `{project}`: {text}"
+        body = {"project": project, "text": text, "source": "openwebui", "confirm": True}
+        if self.valves.projects_folder:
+            body["root"] = self.valves.projects_folder
+        res = self._call("POST", "/api/feedback/add", body)
+        return res if isinstance(res, str) else f"Added to {res['project']}: {res['text']} ({res['status']})"
+
+    def update_feedback_status(self, file: str, text: str, status: str, confirm: bool = False) -> str:
+        """
+        Update the status cell of a suggestion inside `<project>/docs/TEMPLATE_FEEDBACK.md`.
+        :param file: Path to docs/TEMPLATE_FEEDBACK.md.
+        :param text: Exact suggestion text of the row.
+        :param status: New status (待決定, 已採用, or 不採用).
+        :param confirm: Must be True after asking the user to approve.
+        :return: Confirmation message or updated row summary.
+        """
+        if not confirm:
+            return f"Not updated yet. Ask the user to confirm changing `{text}` in `{file}` to `{status}`."
+        res = self._call("POST", "/api/feedback/status", {"file": file, "text": text, "status": status, "confirm": True})
+        return res if isinstance(res, str) else f"Updated {res['project']}: {res['text']} -> {res['status']}"

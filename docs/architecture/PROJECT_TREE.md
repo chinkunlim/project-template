@@ -113,6 +113,7 @@ project_template/
 │   │   └── KNOWN_ISSUES.md                 # 已知問題總表 (🔴/🟡/🟢)
 │   ├── specs/                              # [功能規格書] PRD / API Contract
 │   │   ├── 001-project-web-launcher.md
+│   │   ├── 002-master-child-linkage.md
 │   │   ├── _TEMPLATE.md                    # 規格範本
 │   │   └── SPECS.md                        # 規格清單
 │   ├── standards/                          # [工程規範] 依任務載入 (Progressive Disclosure)
@@ -176,10 +177,12 @@ project_template/
 │       │   ├── feedback_cli.py
 │       │   ├── hub_cli.py
 │       │   ├── init_cli.py
+│       │   ├── linkage_routes.py
 │       │   ├── migrate_cli.py
 │       │   ├── openwebui_tool.py
 │       │   ├── skills_sync_cli.py
 │       │   ├── template_mcp.py
+│       │   ├── template_mcp_hub.py
 │       │   ├── update_all_cli.py
 │       │   ├── web_launcher_routes.py
 │       │   ├── web_routes.py
@@ -188,6 +191,7 @@ project_template/
 │       │   ├── __init__.py
 │       │   ├── api_extras_pack.py
 │       │   ├── api_pack.py
+│       │   ├── api_templates.py
 │       │   ├── common.py
 │       │   ├── db_pack.py
 │       │   ├── docs_templates.py
@@ -198,19 +202,23 @@ project_template/
 │       │   ├── integrations_pack.py
 │       │   ├── language_packs.py
 │       │   ├── migration_plan.py
+│       │   ├── migration_render.py
 │       │   ├── mobile_pack.py
 │       │   ├── ollama_pack.py
 │       │   ├── other_packs.py
 │       │   ├── project_docs.py
+│       │   ├── python_config_templates.py
 │       │   ├── python_pack.py
 │       │   ├── rust_pack.py
 │       │   ├── stack_config.py
+│       │   ├── stack_files.py
 │       │   └── web_pack.py
 │       ├── services/
 │       │   ├── __init__.py
 │       │   ├── feedback.py
 │       │   ├── hub_manager.py
 │       │   ├── migration.py
+│       │   ├── project_inspector.py
 │       │   ├── scaffold.py
 │       │   ├── template_service.py
 │       │   ├── update_all.py
@@ -219,6 +227,7 @@ project_template/
 │       └── __init__.py
 ├── tests/                                  # 【測試層】單元與整合測試
 │   ├── test_framework.py
+│   ├── test_master_linkage.py
 │   ├── test_tier1_tier2.py
 │   └── test_web_launcher.py
 ├── .editorconfig

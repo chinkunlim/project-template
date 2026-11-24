@@ -45,6 +45,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from project_template.config.framework import FRAMEWORK_VERSION
 from project_template.config.logging_setup import run_command
 from project_template.config.settings import env_value
+from project_template.entrypoints.linkage_routes import router as linkage_router
 from project_template.entrypoints.template_mcp import build_template_mcp
 from project_template.entrypoints.web_launcher_routes import router as web_launcher_router
 from project_template.entrypoints.web_routes import ERROR_HANDLERS, operation_id, router
@@ -86,8 +87,13 @@ def add_guard(app: FastAPI, port: int, extra_hosts: list[str], origins: list[str
         return await call_next(request)
 
     if origins:
-        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"],
-                           expose_headers=["Mcp-Session-Id"])
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["Mcp-Session-Id"],
+        )
 
 
 def mcp_lifespan(mcp: Any) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
@@ -131,18 +137,25 @@ def create_app(port: int = DEFAULT_PORT, extra_hosts: list[str] | None = None, o
     origins = [OPEN_WEBUI] if origins is None else origins
     mcp = build_template_mcp()
     names = ["127.0.0.1", "localhost", *extra_hosts]
-    security = TransportSecuritySettings(allowed_hosts=[*names, *(f"{h}:*" for h in names)],
-                                         allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *origins])
+    security = TransportSecuritySettings(
+        allowed_hosts=[*names, *(f"{h}:*" for h in names)],
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *origins],
+    )
     mcp_routes = mcp.streamable_http_app(streamable_http_path="/mcp", transport_security=security).routes
 
-    app = FastAPI(title="Project template", version=FRAMEWORK_VERSION, lifespan=mcp_lifespan(mcp),
-                  generate_unique_id_function=operation_id,
-                  description="Create, migrate and maintain projects. AI agents can also use MCP at /mcp.")
+    app = FastAPI(
+        title="Project template",
+        version=FRAMEWORK_VERSION,
+        lifespan=mcp_lifespan(mcp),
+        generate_unique_id_function=operation_id,
+        description="Create, migrate and maintain projects. AI agents can also use MCP at /mcp.",
+    )
     add_guard(app, port, extra_hosts, origins)
     for error, handler in ERROR_HANDLERS.items():
         app.add_exception_handler(error, handler)
     app.include_router(router)
     app.include_router(web_launcher_router)
+    app.include_router(linkage_router)
     app.router.routes.extend(mcp_routes)
     return app
 

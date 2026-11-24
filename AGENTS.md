@@ -29,6 +29,7 @@
 | 「啟動 <專案名> 網頁」「開啟 <專案名>」 | `python3 scripts/hub.py launch <專案名>`（未啟動則背景啟動並開啟頁面） |
 | 「停止 <專案名> 網頁」「停止全部子網頁」 | `python3 scripts/hub.py stop-project <專案名>` / `python3 scripts/hub.py stop-all` |
 | 「開啟 / 關閉總控台開機常駐」 | `python3 scripts/hub.py autostart on` / `python3 scripts/hub.py autostart off` |
+| 「從母版更新各專案 Graphify / 掃描狀態 / 寫建議」 | `python3 scripts/hub.py graphify [專案]` / `python3 scripts/hub.py scan [專案]` / `python3 scripts/hub.py feedback-add <專案> "<內容>"` |
 | 「環境怪怪的」「換電腦了」 | `python3 scripts/agentctl.py doctor --fix` |
 
 ## 2. 核心規則（必須遵守）

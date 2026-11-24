@@ -1,20 +1,24 @@
-"""Zero-lookup single CLI for managing the Hub server and child project FastAPI servers.
+"""Zero-lookup single CLI for managing the Hub server and Master-Child linkage actions.
 
 Purpose:
-    Implements `python3 scripts/hub.py {start,stop,status,launch,stop-project,stop-all,autostart}`
-    using standard library only so AI agents and users can start or stop the Hub and any child
-    project web page with one deterministic command.
+    Implements `python3 scripts/hub.py {start,stop,status,launch,stop-project,stop-all,autostart,graphify,scan,feedback-add}`
+    using standard library only so AI agents and users can run Hub and child project actions
+    with a single deterministic command.
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
 import sys
 import webbrowser
+from pathlib import Path
 
 from project_template.config.logging_setup import run_command
 from project_template.config.settings import TEMPLATE_ROOT
+from project_template.services import feedback as feedback_svc
 from project_template.services import hub_manager as hm
+from project_template.services import template_service as ts
 from project_template.services import web_launcher as wl
 
 logger = logging.getLogger(__name__)
@@ -142,31 +146,102 @@ def _handle_autostart(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_graphify(args: argparse.Namespace) -> int:
+    """Handle `hub graphify [project]` (`agentctl graph` + `graphify update .`).
+
+    Args:
+        args: Parsed CLI namespace containing optional `project` and `include_master`.
+
+    Returns:
+        0 when all steps succeed, else 1.
+    """
+    root = TEMPLATE_ROOT.parent
+    title, steps = ts.graphify_steps({"project": args.project, "include_master": args.include_master}, root)
+    print(f"🕸️ {title}")
+    failed = 0
+    for argv, cwd in steps:
+        res = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
+        mark = "✅" if res.returncode == 0 else "❌"
+        print(f"  {mark} [{cwd.name}] {' '.join(argv)}")
+        if res.returncode != 0:
+            failed += 1
+            tail = (res.stderr or res.stdout).strip().splitlines()[-3:]
+            for line in tail:
+                print(f"     {line}")
+    return 0 if failed == 0 else 1
+
+
+def _handle_scan(args: argparse.Namespace) -> int:
+    """Handle `hub scan [project]` (`agentctl scan --skip-tests`).
+
+    Args:
+        args: Parsed CLI namespace containing optional `project`.
+
+    Returns:
+        0 when every scanned project exits 0, else 1.
+    """
+    root = TEMPLATE_ROOT.parent
+    targets: list[Path] = [ts.resolve_feedback_target(args.project, root)] if args.project else ts.tracked(root)
+    if not targets:
+        print("（找不到追蹤專案）")
+        return 0
+    failed = 0
+    for proj in targets:
+        res = subprocess.run([sys.executable, "scripts/agentctl.py", "scan", "--skip-tests"], cwd=proj, capture_output=True, text=True, check=False)
+        score = next((ln.strip() for ln in res.stdout.splitlines() if "綜合評分" in ln), "")
+        mark = "✅" if res.returncode == 0 else "❌"
+        print(f"{mark} {proj.name}: {score or f'exit={res.returncode}'}")
+        failed += int(res.returncode != 0)
+    return 0 if failed == 0 else 1
+
+
+def _handle_feedback_add(args: argparse.Namespace) -> int:
+    """Handle `hub feedback-add <project> <text>`.
+
+    Args:
+        args: Parsed CLI namespace containing `project`, `text`, `source`, `status`.
+
+    Returns:
+        Exit code 0.
+    """
+    target = ts.resolve_feedback_target(args.project, TEMPLATE_ROOT.parent)
+    res = feedback_svc.add_suggestion(target, args.text, source=args.source, status=args.status)
+    print(f"📝 已寫入 {res['project']} ({res['file']})：{res['date']} | {res['text']} | {res['status']}")
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build argument parser with subcommands for `scripts/hub.py`.
 
     Returns:
         Configured `ArgumentParser`.
     """
-    parser = argparse.ArgumentParser(description="母版網頁總控台與各專案 FastAPI 服務單一入口指令")
+    parser = argparse.ArgumentParser(description="母版網頁總控台與各專案連動單一入口指令")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p_start = sub.add_parser("start", help="在背景啟動母版網頁總控台並開啟瀏覽器")
-    p_start.add_argument("--port", type=int, default=hm.DEFAULT_HUB_PORT)
-    p_start.add_argument("--no-browser", action="store_true")
-    p_stop = sub.add_parser("stop", help="停止背景母版總控台（--all 同時停止所有子專案網頁）")
-    p_stop.add_argument("--port", type=int, default=hm.DEFAULT_HUB_PORT)
-    p_stop.add_argument("--all", action="store_true")
-    p_status = sub.add_parser("status", help="列出母版總控台與所有子專案網頁運行狀態")
-    p_status.add_argument("--port", type=int, default=hm.DEFAULT_HUB_PORT)
+    for name, help_text in (("start", "背景啟動總控台並開啟瀏覽器"), ("stop", "停止總控台（--all 含子專案）"), ("status", "列出總控台與子專案網頁狀態")):
+        sp = sub.add_parser(name, help=help_text)
+        sp.add_argument("--port", type=int, default=hm.DEFAULT_HUB_PORT)
+        if name == "start":
+            sp.add_argument("--no-browser", action="store_true")
+        if name == "stop":
+            sp.add_argument("--all", action="store_true")
     p_launch = sub.add_parser("launch", help="啟動指定專案的 FastAPI 網頁並開啟分頁")
-    p_launch.add_argument("project", help="專案名稱（如 note-studio）或絕對路徑")
+    p_launch.add_argument("project", help="專案名稱（如 video-studio）或絕對路徑")
     p_launch.add_argument("--no-browser", action="store_true")
-    p_stop_p = sub.add_parser("stop-project", help="停止由母版啟動的單一專案網頁")
-    p_stop_p.add_argument("project", help="專案名稱或絕對路徑")
+    sub.add_parser("stop-project", help="停止由母版啟動的單一專案網頁").add_argument("project", help="專案名稱或絕對路徑")
     sub.add_parser("stop-all", help="停止所有由母版啟動的子專案網頁以釋放記憶體")
     p_auto = sub.add_parser("autostart", help="設定或取消 macOS 登入自動常駐母版總控台")
     p_auto.add_argument("mode", choices=["on", "off"])
     p_auto.add_argument("--port", type=int, default=hm.DEFAULT_HUB_PORT)
+    p_graph = sub.add_parser("graphify", help="更新單一或全部追蹤專案的 AST 與 Graphify 圖譜")
+    p_graph.add_argument("project", nargs="?", default="", help="專案名稱、`master` 或絕對路徑（留空 = 全部追蹤專案）")
+    p_graph.add_argument("--include-master", action="store_true", help="批次更新時一併更新母版自身圖譜")
+    sub.add_parser("scan", help="在單一或全部追蹤專案執行架構合規掃描").add_argument("project", nargs="?", default="", help="專案名稱或留空代表全部")
+    p_fb = sub.add_parser("feedback-add", help="從母版寫入一列建議到指定專案的 docs/TEMPLATE_FEEDBACK.md")
+    p_fb.add_argument("project", help="專案名稱（或 master）")
+    p_fb.add_argument("text", help="建議內容")
+    p_fb.add_argument("--source", default="master-cli", help="來源對話或任務")
+    p_fb.add_argument("--status", default="待決定", help="初始狀態（預設待決定）")
     return parser
 
 
@@ -188,6 +263,9 @@ def _main(argv: list[str] | None) -> int:
         "stop-project": _handle_stop_project,
         "stop-all": _handle_stop_all,
         "autostart": _handle_autostart,
+        "graphify": _handle_graphify,
+        "scan": _handle_scan,
+        "feedback-add": _handle_feedback_add,
     }
     try:
         return handlers[args.cmd](args)

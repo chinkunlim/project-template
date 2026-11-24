@@ -3,15 +3,10 @@
 Purpose:
     One place for everything the template can do: create a project, migrate an old project, add an
     existing project to the registry, list projects and run framework commands in them, refresh their
-    remote state (`git fetch`), collect template feedback, and preview / apply the framework update.
-    Every action works on the same set of projects, `tracked()`: the scanned folder plus the registered
-    projects elsewhere. `entrypoints/web_ui.py` (FastAPI page + JSON API + `/mcp`) and
-    `entrypoints/template_mcp.py` (MCP over stdio) only translate requests into these functions, so every entrypoint behaves the same.
-
-    Actions run the existing command-line tools (`scripts/init_project.py`, `scripts/migrate_project.py`,
-    `agentctl …`, `scripts/update_all.py`) as background jobs, one at a time, and keep their output.
-    `DATA_DIR` is removed from the environment of every command, so a variable inherited by the
-    caller (e.g. Open WebUI's `export DATA_DIR=...`) never overrides a project's own `.env`.
+    remote state (`git fetch`), update Graphify graphs, collect/edit template feedback, and preview /
+    apply the framework update.
+    `entrypoints/web_ui.py` and `entrypoints/template_mcp.py` only translate requests into these functions,
+    so every entrypoint behaves identically.
 """
 from __future__ import annotations
 
@@ -27,8 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from project_template.adapters import project_registry
-from project_template.config.framework import FRAMEWORK_VERSION, load_catalog, parse_toml
+from project_template.config.framework import FRAMEWORK_VERSION, load_catalog
 from project_template.config.logging_setup import set_run_id
 from project_template.config.settings import TEMPLATE_ROOT, child_env
 from project_template.packs.stack_config import (
@@ -40,7 +34,28 @@ from project_template.packs.stack_config import (
     resolve_stack,
 )
 from project_template.services import feedback as collect_feedback
-from project_template.services import update_all, web_launcher
+from project_template.services.project_inspector import (
+    add_existing,
+    fetch_steps,
+    graphify_steps,
+    list_projects,
+    overview,
+    project_status,
+    push_steps,
+    register_existing,
+    require_dir,
+    resolve_feedback_target,
+    tracked,
+)
+
+__all__ = [
+    "AfterJob", "DEFAULT_PORT", "Job", "JobRunner", "NAME_RE", "PROJECT_COMMANDS", "PY", "RUNNER", "SCRIPTS",
+    "add_existing", "create_steps", "data_preview", "default_data_folder", "feedback", "fetch_steps",
+    "graphify_steps", "info", "job_view", "list_projects", "migrate_steps", "overview", "pick_folder",
+    "project_command_steps", "project_status", "project_target", "projects_root", "push_steps",
+    "register_existing", "require_dir", "resolve_feedback_target", "resolve_root", "tracked",
+    "update_apply_steps", "update_preview", "wait_for",
+]
 
 logger = logging.getLogger(__name__)
 SCRIPTS = TEMPLATE_ROOT / "scripts"
@@ -49,9 +64,12 @@ DEFAULT_PORT = 8766
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.\-一-鿿]*$")
 PROJECT_COMMANDS = {
     "status": ["status"],
+    "scan": ["scan", "--skip-tests"],
+    "graph": ["graph"],
     "doctor": ["doctor"],
     "doctor-fix": ["doctor", "--fix"],
     "setup": ["setup", "--install"],
+    "sync": ["sync"],
     "check": ["check"],
 }
 
@@ -64,11 +82,11 @@ class Job:
         id: Increasing job number.
         title: Short description shown on the page.
         steps: `(argv, cwd)` pairs.
+        keep_going: Run the remaining steps after a failure (the job still ends `failed`).
         state: `running`, `done` or `failed`.
         log: Output lines (commands are echoed with `$`).
         result: Structured result for the page (e.g. the update preview table).
         returncode: Exit code of the last command.
-        keep_going: Run the remaining steps after a failure (the job still ends `failed`).
     """
 
     id: int
@@ -81,7 +99,6 @@ class Job:
     returncode: int = 0
 
 
-# Called with the finished job when every step succeeded (fills `job.result`).
 AfterJob = Callable[[Job], None]
 
 
@@ -94,8 +111,13 @@ class JobRunner:
         self.current: Job | None = None
         self.counter = 0
 
-    def start(self, title: str, steps: list[tuple[list[str], Path]], after: AfterJob | None = None,
-              keep_going: bool = False) -> Job:
+    def start(
+        self,
+        title: str,
+        steps: list[tuple[list[str], Path]],
+        after: AfterJob | None = None,
+        keep_going: bool = False,
+    ) -> Job:
         """Start a job unless one is still running.
 
         Args:
@@ -126,7 +148,7 @@ class JobRunner:
             job: The job to run.
             after: Optional completion callback.
         """
-        set_run_id(f"job{job.id}")  # this thread's log lines; each command run logs its own run id
+        set_run_id(f"job{job.id}")
         env = child_env()
         failed = 0
         logger.info("job %d start %r steps=%d", job.id, job.title, len(job.steps))
@@ -145,6 +167,16 @@ class JobRunner:
                     job.state = "failed"
                     logger.warning("job %d failed %r exit=%s", job.id, job.title, job.returncode)
                     return
+        self._finish_job(job, after, failed)
+
+    def _finish_job(self, job: Job, after: AfterJob | None, failed: int) -> None:
+        """Finalize job state after all steps finish and invoke optional `after` callback.
+
+        Args:
+            job: Executed job instance.
+            after: Optional callback invoked when zero steps failed.
+            failed: Number of failed steps recorded.
+        """
         if failed:
             job.state = "failed"
             logger.warning("job %d failed %r: %d of %d steps failed", job.id, job.title, failed, len(job.steps))
@@ -186,27 +218,6 @@ def default_data_folder(parent: Path, name: str) -> Path:
     return (parent.parent / "projects-data" / data_slug(name)).resolve()
 
 
-def require_dir(raw: str, what: str) -> Path:
-    """Validate an existing absolute folder from the page.
-
-    Args:
-        raw: Path text (may start with `~`).
-        what: Field name for the error message.
-
-    Returns:
-        The resolved folder.
-
-    Raises:
-        ValueError: When the path is empty, relative or not a folder.
-    """
-    path = Path(str(raw or "").strip()).expanduser()
-    if not str(raw or "").strip() or not path.is_absolute():
-        raise ValueError(f"{what}：請選擇完整路徑的資料夾")
-    if not path.is_dir():
-        raise ValueError(f"{what}：找不到資料夾 {path}")
-    return path.resolve()
-
-
 def project_target(body: dict[str, Any]) -> tuple[str, Path]:
     """Validate the project name and location and return the new folder.
 
@@ -242,7 +253,8 @@ def data_preview(body: dict[str, Any]) -> dict[str, Any]:
     chosen = Path(str(body["data_dir"])).expanduser() if body.get("data_dir") else None
     absolute = chosen.resolve() if chosen else default_data_folder(parent, name)
     stored, shareable = data_dir_setting(parent / name, name, chosen)
-    return {"absolute": str(absolute), "stored": stored, "where": ".env.example（相對路徑，可 commit）" if shareable else "只寫在 .env（外接硬碟的絕對路徑）"}
+    where = ".env.example（相對路徑，可 commit）" if shareable else "只寫在 .env（外接硬碟的絕對路徑）"
+    return {"absolute": str(absolute), "stored": stored, "where": where}
 
 
 def create_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path]]]:
@@ -262,7 +274,7 @@ def create_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path]
     addons = [a for a in body.get("addons") or [] if a]
     if stack not in STACK_CHOICES or any(a not in ADDON_CHOICES for a in addons):
         raise ValueError("不支援的 stack 或附加功能")
-    resolve_stack(stack, addons)  # raises ValueError for python-only add-ons on other stacks
+    resolve_stack(stack, addons)
     argv = [PY, str(SCRIPTS / "init_project.py"), "--target", str(target), "--name", name, "--stack", stack]
     argv += ["--with", *addons] if addons else []
     skills = [s for s in body.get("skills") or [] if s]
@@ -274,6 +286,7 @@ def create_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path]
     argv += ["--license", "MIT"] if body.get("license") == "MIT" else []
     argv += ["--timezone", str(body["timezone"]).strip()] if str(body.get("timezone") or "").strip() else []
     argv += ["--data-dir", str(Path(str(body["data_dir"])).expanduser())] if body.get("data_dir") else []
+    argv += ["--http-port", str(int(body["http_port"]))] if body.get("http_port") else []
     steps = [(argv, TEMPLATE_ROOT)]
     steps += [([PY, "scripts/agentctl.py", "doctor", "--fix"], target)] if body.get("doctor", True) else []
     steps += [([PY, "scripts/agentctl.py", "setup", "--install"], target)] if body.get("setup") else []
@@ -310,38 +323,6 @@ def migrate_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path
     return f"遷移 {source.name} → {name}", steps
 
 
-def tracked(root: Path) -> list[Path]:
-    """Every project the actions work on: the ones below `root` plus the registered ones elsewhere.
-
-    Args:
-        root: Folder to scan (normally the folder that contains the template).
-
-    Returns:
-        Sorted project folders (`update_all.tracked_projects()`).
-    """
-    return update_all.tracked_projects([root], 3)
-
-
-def list_projects(root: Path) -> list[dict[str, Any]]:
-    """List the tracked projects (below `root` + registered).
-
-    Args:
-        root: Folder to scan.
-
-    Returns:
-        Project summaries (name, path, framework version, uncommitted files, last commit).
-    """
-    rows = []
-    for project in tracked(root):
-        status = subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True, text=True, check=False)
-        last = subprocess.run(["git", "log", "-1", "--format=%h %cs %s"], cwd=project, capture_output=True, text=True, check=False)
-        rows.append({
-            "name": project.name, "path": str(project), "version": collect_feedback.framework_version(project),
-            "dirty": len([ln for ln in status.stdout.splitlines() if ln.strip()]), "last_commit": last.stdout.strip(),
-        })
-    return rows
-
-
 def feedback(root: Path, include_all: bool) -> dict[str, Any]:
     """Collect template suggestions from every tracked project.
 
@@ -354,8 +335,13 @@ def feedback(root: Path, include_all: bool) -> dict[str, Any]:
     """
     files = collect_feedback.find_feedback_files([root], 3, registered=True)
     items = [s for f in files for s in collect_feedback.read_suggestions(f) if include_all or collect_feedback.is_open(s)]
-    rows = [{"date": s.date, "project": s.project, "version": s.version, "text": s.text, "source": s.source,
-             "status": s.status, "file": str(s.file)} for s in sorted(items, key=lambda s: (s.date, s.project))]
+    rows = [
+        {
+            "date": s.date, "project": s.project, "version": s.version, "text": s.text,
+            "source": s.source, "status": s.status, "file": str(s.file),
+        }
+        for s in sorted(items, key=lambda s: (s.date, s.project))
+    ]
     return {"scanned": len(files), "items": rows}
 
 
@@ -368,10 +354,17 @@ def update_preview(root: Path) -> list[dict[str, Any]]:
     Returns:
         One row per project with versions, file counts and status.
     """
+    from project_template.services import update_all
+
     plans = [update_all.preview(p) for p in tracked(root)]
     update_all.classify(plans)
-    return [{"name": p.path.name, "path": str(p.path), "current": p.current, "target": p.target,
-             **{k: len(v) for k, v in p.files.items()}, "removed_files": p.files["removed"], "status": p.status} for p in plans]
+    return [
+        {
+            "name": p.path.name, "path": str(p.path), "current": p.current, "target": p.target,
+            **{k: len(v) for k, v in p.files.items()}, "removed_files": p.files["removed"], "status": p.status,
+        }
+        for p in plans
+    ]
 
 
 def info() -> dict[str, Any]:
@@ -381,12 +374,14 @@ def info() -> dict[str, Any]:
         Settings and option lists.
     """
     catalog = load_catalog(TEMPLATE_ROOT)
+    skills = [
+        {"name": n, "tier": m.get("tier", ""), "trigger": m.get("trigger", ""), "stacks": m.get("stacks", [])}
+        for n, m in sorted(catalog.items())
+    ]
     return {
         "framework_version": FRAMEWORK_VERSION, "template": str(TEMPLATE_ROOT), "projects_root": str(projects_root()),
         "stacks": list(STACK_CHOICES), "addons": list(ADDON_CHOICES), "python_only": list(PYTHON_ONLY_ADDONS),
-        "skills": [{"name": n, "tier": m.get("tier", ""), "trigger": m.get("trigger", ""), "stacks": m.get("stacks", [])}
-                   for n, m in sorted(catalog.items())],
-        "native_picker": sys.platform == "darwin",
+        "skills": skills, "native_picker": sys.platform == "darwin",
     }
 
 
@@ -462,8 +457,10 @@ def job_view(job: Job | None) -> dict[str, Any] | None:
     """
     if job is None:
         return None
-    return {"id": job.id, "title": job.title, "state": job.state, "log": job.log[-400:], "result": job.result,
-            "returncode": job.returncode}
+    return {
+        "id": job.id, "title": job.title, "state": job.state,
+        "log": job.log[-400:], "result": job.result, "returncode": job.returncode,
+    }
 
 
 def wait_for(job: Job, timeout: float = 900) -> Job:
@@ -480,156 +477,3 @@ def wait_for(job: Job, timeout: float = 900) -> Job:
     while job.state == "running" and time.monotonic() < deadline:
         time.sleep(0.3)
     return job
-
-
-def _git(project: Path, *args: str) -> str:
-    """Run a read-only git command in a project.
-
-    Args:
-        project: Project folder.
-        *args: Arguments after `git`.
-
-    Returns:
-        Trimmed output, or an empty string when git fails.
-    """
-    res = subprocess.run(["git", *args], cwd=project, capture_output=True, text=True, check=False)
-    return res.stdout.strip() if res.returncode == 0 else ""
-
-
-def project_status(project: Path) -> dict[str, Any]:
-    """Collect what the overview shows for one project (local only: no network, nothing changes).
-
-    Args:
-        project: Project folder.
-
-    Returns:
-        Name, stack, framework version, uncommitted files, branch, remote, ahead / behind its upstream
-        (as of the last fetch), last commit, open template suggestions and whether AI tools are configured.
-    """
-    toml_file = project / ".agents" / "project.toml"
-    settings = parse_toml(toml_file.read_text(encoding="utf-8")) if toml_file.exists() else {}
-    info_ = settings.get("project", {})
-    upstream = _git(project, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-    behind, ahead = (_git(project, "rev-list", "--left-right", "--count", f"{upstream}...HEAD").split() + ["0", "0"])[:2] \
-        if upstream else ("0", "0")
-    remote = re.sub(r"//[^@/]+@", "//", _git(project, "remote", "get-url", "origin"))  # never show credentials
-    feedback_file = project / "docs" / "TEMPLATE_FEEDBACK.md"
-    suggestions = collect_feedback.read_suggestions(feedback_file) if feedback_file.exists() else []
-    return {
-        "name": project.name, "path": str(project), "exists": True,
-        "stack": info_.get("stack", ""), "addons": info_.get("addons", []),
-        "version": collect_feedback.framework_version(project), "template_version": FRAMEWORK_VERSION,
-        "dirty": len([ln for ln in _git(project, "status", "--porcelain").splitlines() if ln.strip()]),
-        "branch": _git(project, "rev-parse", "--abbrev-ref", "HEAD"), "upstream": upstream, "remote": remote,
-        "ahead": int(ahead or 0), "behind": int(behind or 0),
-        "last_commit": _git(project, "log", "-1", "--format=%h %cs %s"),
-        "open_feedback": len([x for x in suggestions if collect_feedback.is_open(x)]),
-        "mcp": (project / ".mcp.json").exists(),
-        "web": web_launcher.service_status(project),
-    }
-
-
-def overview(root: Path) -> list[dict[str, Any]]:
-    """Every tracked project: found in `root` plus the ones recorded in the registry.
-
-    Args:
-        root: Folder to scan (normally the folder that contains the template).
-
-    Returns:
-        One status per project; registry entries whose folder is gone are listed with `exists: False`.
-    """
-    registry = {str(Path(r["path"]).resolve()): r for r in project_registry.load()}
-    base = root.expanduser().resolve()
-    rows = []
-    for project in sorted(tracked(root), key=lambda p: p.name.lower()):
-        status = project_status(project)
-        status["source"] = "folder" if project.is_relative_to(base) else "registry"
-        status["how"] = registry.get(str(project), {}).get("how", "")
-        rows.append(status)
-    rows += [{"name": r["name"], "path": r["path"], "exists": False, "how": r.get("how", ""), "source": "registry"}
-             for r in registry.values() if not r["exists"]]
-    return rows
-
-
-def register_existing(raw: str) -> dict[str, Any]:
-    """Check that a folder can be added to the registry (an existing project made with the template).
-
-    Args:
-        raw: Absolute folder from the caller.
-
-    Returns:
-        `path`, `name` and `already` (True when it is registered already).
-
-    Raises:
-        ValueError: When the folder is missing, is the template, or lacks `.agents/framework.lock` / `scripts/agentctl.py`.
-    """
-    project = require_dir(raw, "既有專案")
-    if project == TEMPLATE_ROOT:
-        raise ValueError("這是母版本身，不是專案")
-    if not update_all.is_project(project):
-        raise ValueError(f"{project} 不是用母版建立的專案（需要 .agents/framework.lock 和 scripts/agentctl.py）；"
-                         "舊專案請用「遷移舊專案」")
-    already = any(Path(r["path"]).resolve() == project for r in project_registry.load())
-    return {"path": str(project), "name": project.name, "already": already}
-
-
-def add_existing(raw: str) -> dict[str, Any]:
-    """Add an existing project folder to the registry (the user confirmed it; the folder is not changed).
-
-    Args:
-        raw: Absolute project folder.
-
-    Returns:
-        `path`, `name`, `already` and `added`.
-
-    Raises:
-        ValueError: When the folder is not a template project (see `register_existing()`).
-    """
-    found = register_existing(raw)
-    if not found["already"]:
-        project_registry.register(Path(found["path"]), "existing")
-    logger.info(f"📌 登記既有專案 {found['path']}（{'已在清單' if found['already'] else '新加入'}）")
-    return {**found, "added": not found["already"]}
-
-
-def fetch_steps(body: dict[str, Any], root: Path) -> tuple[str, list[tuple[list[str], Path]]]:
-    """Build the `git fetch` commands that refresh the unpushed / behind counts (only remote-tracking refs change).
-
-    No `confirm` is needed: no files, commits or pushes change (Refs: ADR-002).
-
-    Args:
-        body: Optional `path` of one project; empty = every tracked project that has a remote.
-        root: Folder to scan when no path is given.
-
-    Returns:
-        Tuple of job title and steps (no password prompts: `GIT_TERMINAL_PROMPT=0`).
-
-    Raises:
-        ValueError: When the given project or every tracked project has no git remote.
-    """
-    projects = [require_dir(body["path"], "專案")] if body.get("path") else tracked(root)
-    with_remote = [p for p in projects if _git(p, "remote")]
-    if not with_remote:
-        raise ValueError("沒有設定 git 遠端的專案，不需要 fetch")
-    argv = ["env", "GIT_TERMINAL_PROMPT=0", "git", "fetch", "--all", "--quiet"]
-    title = f"git fetch {with_remote[0].name}" if body.get("path") else f"git fetch（{len(with_remote)} 個專案）"
-    return title, [(argv, p) for p in with_remote]
-
-
-def push_steps(body: dict[str, Any]) -> tuple[str, list[tuple[list[str], Path]]]:
-    """Build the command that pushes a project to its upstream (the user clicked / confirmed it).
-
-    Args:
-        body: `path` of the project.
-
-    Returns:
-        Tuple of job title and steps (`ALLOW_PUSH=1 git push`, which the pre-push hook lets through).
-
-    Raises:
-        ValueError: When the folder is not a project or has no upstream branch.
-    """
-    project = require_dir(body.get("path", ""), "專案")
-    if not _git(project, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"):
-        raise ValueError(f"{project.name} 沒有設定遠端分支（upstream）：先在專案內設定 GitHub 遠端並推送一次")
-    return f"推送 {project.name}", [(["env", "ALLOW_PUSH=1", "git", "push"], project)]
-

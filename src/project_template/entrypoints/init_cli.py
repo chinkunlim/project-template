@@ -20,7 +20,7 @@ from pathlib import Path
 from project_template.adapters.project_registry import register as register_project
 from project_template.config.logging_setup import FILE_ONLY, run_command
 from project_template.packs.stack_config import ADDON_CHOICES, STACK_CHOICES
-from project_template.services.scaffold import DEFAULT_DESCRIPTION, scaffold_project, skill_catalog
+from project_template.services.scaffold import DEFAULT_DESCRIPTION, ScaffoldOptions, scaffold_project, skill_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +44,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="建立標準結構的新專案（文件、資料夾、Agent 規則與工具）")
     parser.add_argument("--target", help="新專案資料夾路徑")
     parser.add_argument("--name", default=None, help="專案名稱（預設為資料夾名稱）")
-    parser.add_argument("--stack", choices=STACK_CHOICES, default="python",
-                        help="主要語言（預設 python；both = python+web，all = python+web+gas，mobile = 只有手機 App）")
-    parser.add_argument("--with", dest="addons", nargs="*", choices=ADDON_CHOICES, default=[],
-                        help="附加：web、gas、mobile（Expo 手機 App，Android+iOS）、api（FastAPI）、db（SQLAlchemy+Alembic+SQLite）、"
-                             "ollama（本機模型＋硬體檢查）、evals（輸出品質評估）")
+    parser.add_argument(
+        "--stack", choices=STACK_CHOICES, default="python",
+        help="主要語言（預設 python；both = python+web，all = python+web+gas，mobile = 只有手機 App）",
+    )
+    parser.add_argument(
+        "--with", dest="addons", nargs="*", choices=ADDON_CHOICES, default=[],
+        help="附加：web、gas、mobile、api（FastAPI）、db、ollama、evals",
+    )
     parser.add_argument("--timezone", default=None, help="GAS 時區（預設讀取這台電腦，例如 Asia/Taipei）")
     parser.add_argument("--license", default="none", choices=["none", "MIT"], help="授權：MIT 會產生 LICENSE（預設不授權）")
     parser.add_argument("--description", default=DEFAULT_DESCRIPTION, help="一句話專案描述")
     parser.add_argument("--skills", nargs="*", default=[], help="額外安裝的 optional skills（例如 legacy-migration）")
     parser.add_argument("--list-skills", action="store_true", help="列出可用 skills 後結束")
     parser.add_argument("--no-git", action="store_true", help="不建立 git repo 與初始 commit")
-    parser.add_argument("--data-dir", default=None,
-                        help="資料資料夾（預設 ../../projects-data/<名稱>）；同一顆硬碟會存成相對路徑，外接硬碟只寫進 .env")
+    parser.add_argument(
+        "--data-dir", default=None,
+        help="資料資料夾（預設 ../../projects-data/<名稱>）；同一顆硬碟會存成相對路徑，外接硬碟只寫進 .env",
+    )
+    parser.add_argument("--http-port", type=int, default=None, help="FastAPI 本機埠號（--with api 時未指定會自動選不衝突埠號）")
     parser.add_argument("--force", action="store_true", help="允許寫入非空資料夾（可能覆蓋同名檔案）")
     args = parser.parse_args(argv)
     if not args.list_skills and not args.target:
@@ -91,13 +97,20 @@ def _main(argv: list[str] | None) -> int:
         return 0
     target_dir = Path(args.target).expanduser().resolve()
     project_name = args.name or target_dir.name
+    opts = ScaffoldOptions(
+        stack=args.stack,
+        addons=args.addons,
+        description=args.description,
+        extra_skills=args.skills,
+        timezone=args.timezone,
+        license_kind=args.license,
+        init_git_repo=not args.no_git,
+        force=args.force,
+        data_dir=Path(args.data_dir) if args.data_dir else None,
+        http_port=args.http_port,
+    )
     try:
-        skills = scaffold_project(
-            target_dir, project_name, stack=args.stack, addons=args.addons, description=args.description,
-            extra_skills=args.skills, timezone=args.timezone, license_kind=args.license,
-            init_git_repo=not args.no_git, force=args.force,
-            data_dir=Path(args.data_dir) if args.data_dir else None,
-        )
+        skills = scaffold_project(target_dir, project_name, opts)
     except (FileExistsError, ValueError) as exc:
         logger.warning("init refused %s: %s", target_dir, exc, extra=FILE_ONLY)
         print(f"❌ {exc}", file=sys.stderr)

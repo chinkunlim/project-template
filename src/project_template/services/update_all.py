@@ -332,8 +332,10 @@ def render_table(plans: list[ProjectPlan]) -> str:
     lines = ["| 專案 | 版本 | 更新 | 新增 | 衝突 | 母版已移除 | 狀態 |", "|---|---|---|---|---|---|---|"]
     for p in plans:
         f = p.files
-        lines.append(f"| `{p.path.name}` | v{p.current} ➔ v{p.target} | {len(f['update'])} | {len(f['add'])} | "
-                     f"{len(f['conflict'])} | {len(f['removed'])} | {p.status} |")
+        lines.append(
+            f"| `{p.path.name}` | v{p.current} ➔ v{p.target} | {len(f['update'])} | {len(f['add'])} | "
+            f"{len(f['conflict'])} | {len(f['removed'])} | {p.status} |"
+        )
     return "\n".join(lines)
 
 

@@ -217,7 +217,8 @@
     <div class="row" style="margin-bottom:8px">
       <button id="p-check-updates">檢查框架更新</button>
       <button id="p-update-all" hidden>一鍵更新全部</button>
-      <button id="p-feedback">收集改進建議</button>
+      <button id="p-graphify-all">🕸️ 更新全部 Graphify</button>
+      <button id="p-feedback">管理改進建議</button>
       <button id="p-fetch">git fetch（更新未推送 / 落後）</button>
     </div>
     <div class="row" style="margin-bottom:8px">
@@ -229,9 +230,18 @@
   </section>
 
   <section class="panel" data-panel="feedback" hidden>
-    <h2>改進建議（各專案的 docs/TEMPLATE_FEEDBACK.md，只讀）</h2>
+    <h2>改進建議（各專案的 docs/TEMPLATE_FEEDBACK.md，可直接新增與更新狀態）</h2>
     <div class="row"><input type="text" id="f-root"><button data-pick="f-root">選擇…</button>
       <label class="check"><input type="checkbox" id="f-all">也列出已決定的</label><button class="primary" id="f-scan">彙整</button></div>
+    <div class="launcher-box" style="margin-top:12px">
+      <strong style="display:block;margin-bottom:8px">➕ 直接寫入改進建議（免切換專案）</strong>
+      <div class="row">
+        <select id="f-project" style="flex:0 0 210px;min-width:160px"></select>
+        <input type="text" id="f-text" placeholder="輸入「以後每個專案都要這樣」的建議內容…">
+        <input type="text" id="f-source" value="master-hub" style="flex:0 0 150px;min-width:120px" placeholder="來源 / 任務">
+        <button class="primary" id="f-add">新增建議</button>
+      </div>
+    </div>
     <div class="table-wrap"><table id="f-table"></table></div>
     <div class="msg" id="f-msg"></div>
   </section>
@@ -284,6 +294,8 @@ const ADDONS = {
 let INFO = null;
 let OVERVIEW = [];
 let UPDATES = {};
+let FEEDBACK_ITEMS = [];
+let lastOverviewAt = 0;
 let pollTimer = null;
 let afterJob = null;
 
@@ -485,17 +497,38 @@ async function poll() {
 }
 
 /**
+ * Refresh the project dropdown used by the feedback creation form.
+ * @param {object[]} rows Projects from /api/overview.
+ * @returns {void}
+ */
+function populateFeedbackProjects(rows) {
+  const sel = $("f-project");
+  if (!sel) return;
+  const prev = sel.value;
+  const live = rows.filter((r) => r.exists).map((r) => `<option value="${esc(r.name)}">${esc(r.name)}</option>`);
+  live.push('<option value="master">01 project_template（母版）</option>');
+  sel.innerHTML = live.join("");
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+
+/**
  * Load the overview of every tracked project and draw it.
+ * @param {boolean} [silent] Skip clearing/flashing status text for background refreshes.
  * @returns {Promise<void>} Resolves when the table is drawn.
  */
-async function loadOverview() {
-  say("p-msg", "讀取中…");
+async function loadOverview(silent) {
+  const isSilent = silent === true;
+  if (!isSilent) say("p-msg", "讀取中…");
   try {
     OVERVIEW = await api("GET", `/api/overview?root=${encodeURIComponent($("p-root").value)}`);
+    lastOverviewAt = Date.now();
     drawLauncher(OVERVIEW);
     drawProjects(OVERVIEW);
-    say("p-msg", "");
-  } catch (err) { say("p-msg", err.message, true); }
+    populateFeedbackProjects(OVERVIEW);
+    if (!isSilent) say("p-msg", "");
+  } catch (err) {
+    if (!isSilent) say("p-msg", err.message, true);
+  }
 }
 
 /**
@@ -615,6 +648,25 @@ function githubChip(r) {
 }
 
 /**
+ * Render tasks and Graphify chips for one project row.
+ * @param {object} r Project status from /api/overview.
+ * @returns {string} HTML chips.
+ */
+function taskGraphCell(r) {
+  const t = r.tasks || { count: 0, items: [] };
+  const tTip = (t.items || []).map((x) => `${x.id}: ${x.title} (${x.status})`).join("\n");
+  const taskChip = t.count
+    ? `<span class="chip warn" title="${esc(tTip)}">${t.count} 待辦</span>`
+    : `<span class="chip ok">0 待辦</span>`;
+  const g = r.graphify || { ready: false, updated_at: "" };
+  const shortDate = g.updated_at ? g.updated_at.slice(5, 16) : "";
+  const gChip = g.ready
+    ? `<span class="chip ok" title="Graphify 更新時間：${esc(g.updated_at)}">圖譜 ${esc(shortDate)}</span>`
+    : `<span class="chip">未建圖譜</span>`;
+  return `${taskChip}<br>${gChip}`;
+}
+
+/**
  * Draw the overview table and the summary chips.
  * @param {object[]} rows Projects from /api/overview.
  * @returns {void}
@@ -631,11 +683,11 @@ function drawProjects(rows) {
   ].join("");
   $("p-update-all").hidden = !updates;
   if (!rows.length) { $("p-table").innerHTML = "<tr><td class='hint'>還沒有用母版建立的專案。</td></tr>"; return; }
-  const actions = [["status", "狀態"], ["doctor", "doctor"], ["doctor-fix", "doctor --fix"], ["check", "check"], ["setup", "安裝依賴"]];
-  $("p-table").innerHTML = "<tr><th>專案</th><th>Web</th><th>框架</th><th>本機</th><th>GitHub</th><th>建議</th><th>AI 工具</th><th>動作</th></tr>" + rows.map((r) => {
+  const actions = [["status", "狀態"], ["scan", "掃描"], ["doctor", "doctor"], ["doctor-fix", "doctor --fix"], ["check", "check"], ["sync", "sync"], ["setup", "安裝依賴"]];
+  $("p-table").innerHTML = "<tr><th>專案</th><th>Web</th><th>任務 / 圖譜</th><th>框架</th><th>本機</th><th>GitHub</th><th>建議</th><th>AI 工具</th><th>動作</th></tr>" + rows.map((r) => {
     if (!r.exists) {
       return `<tr><td><strong>${esc(r.name)}</strong><br><span class="hint">${esc(r.path)}</span></td>
-        <td colspan="6"><span class="chip bad">找不到資料夾（可能已搬移或刪除）</span></td>
+        <td colspan="7"><span class="chip bad">找不到資料夾（可能已搬移或刪除）</span></td>
         <td><button class="small" data-forget="${esc(r.path)}">從清單移除</button></td></tr>`;
     }
     const update = UPDATES[r.path];
@@ -644,30 +696,46 @@ function drawProjects(rows) {
       ${r.source === "registry" ? ` <span class="chip">其他位置</span>` : ""}<br><span class="hint">${esc(r.path)}</span>
       <br><span class="hint">${esc(r.last_commit)}</span></td>
       <td>${webCell}</td>
+      <td>${taskGraphCell(r)}</td>
       <td>v${esc(r.version)}${update ? `<br><span class="chip ${update.startsWith("可更新") ? "warn" : "ok"}">${esc(update)}</span>` : ""}</td>
       <td>${r.dirty ? `<span class="chip warn">${r.dirty} 個未 commit</span>` : `<span class="chip ok">乾淨</span>`}</td>
       <td>${githubChip(r)}</td>
       <td>${r.open_feedback ? `<span class="chip warn">${r.open_feedback} 條待決定</span>` : `<span class="hint">—</span>`}</td>
       <td>${r.mcp ? `<span class="chip ok">MCP</span>` : `<span class="hint">—</span>`}</td>
       <td><div class="row">${actions.map(([c, t]) => `<button class="small" data-cmd="${c}" data-path="${esc(r.path)}">${t}</button>`).join("")}
+        <button class="small" data-graphify="${esc(r.path)}">更新圖譜</button>
+        <button class="small" data-add-fb="${esc(r.name)}">+回饋</button>
         ${r.ahead && r.upstream ? `<button class="small" data-push="${esc(r.path)}" data-n="${r.ahead}">推送 ${r.ahead}</button>` : ""}
         ${INFO.native_picker ? `<button class="small" data-reveal="${esc(r.path)}">Finder</button>` : ""}</div></td></tr>`;
   }).join("");
   $("p-table").querySelectorAll("[data-cmd]").forEach((b) => {
     b.onclick = () => {
-      const writes = ["doctor-fix", "setup"].includes(b.dataset.cmd);
+      const writes = ["doctor-fix", "setup", "sync"].includes(b.dataset.cmd);
       if (writes && !confirm(`在 ${b.dataset.path} 執行 agentctl ${b.dataset.cmd.replace("-", " --")}？`)) return;
-      startJob("/api/project-command", { path: b.dataset.path, command: b.dataset.cmd, confirm: writes }, "p-msg", loadOverview);
+      startJob("/api/project-command", { path: b.dataset.path, command: b.dataset.cmd, confirm: writes }, "p-msg", () => loadOverview(false));
+    };
+  });
+  $("p-table").querySelectorAll("[data-graphify]").forEach((b) => {
+    b.onclick = () => startJob("/api/projects/graphify", { path: b.dataset.graphify, root: $("p-root").value }, "p-msg", () => loadOverview(false));
+  });
+  $("p-table").querySelectorAll("[data-add-fb]").forEach((b) => {
+    b.onclick = () => {
+      showTab("feedback");
+      $("f-root").value = $("p-root").value;
+      populateFeedbackProjects(OVERVIEW);
+      $("f-project").value = b.dataset.addFb;
+      $("f-scan").click();
+      $("f-text").focus();
     };
   });
   $("p-table").querySelectorAll("[data-push]").forEach((b) => {
     b.onclick = () => {
       if (!confirm(`把 ${b.dataset.n} 個 commit 推送到 GitHub？\n${b.dataset.push}`)) return;
-      startJob("/api/push", { path: b.dataset.push, confirm: true }, "p-msg", loadOverview);
+      startJob("/api/push", { path: b.dataset.push, confirm: true }, "p-msg", () => loadOverview(false));
     };
   });
   $("p-table").querySelectorAll("[data-forget]").forEach((b) => {
-    b.onclick = async () => { await api("POST", "/api/registry/forget", { path: b.dataset.forget }); loadOverview(); };
+    b.onclick = async () => { await api("POST", "/api/registry/forget", { path: b.dataset.forget }); loadOverview(false); };
   });
   $("p-table").querySelectorAll("[data-reveal]").forEach((b) => { b.onclick = () => api("POST", "/api/reveal", { path: b.dataset.reveal }); });
 }
@@ -740,12 +808,13 @@ async function init() {
       say("w-msg", `已停止 ${res.stopped.length} 個子專案服務${res.skipped.length ? `（略過 ${res.skipped.length} 個外部啟動）` : ""}`);
     } catch (err) { say("w-msg", err.message, true); }
   };
+  $("p-graphify-all").onclick = () => startJob("/api/projects/graphify", { root: $("p-root").value }, "p-msg", () => loadOverview(false));
   $("p-check-updates").onclick = () => startJob("/api/update/preview", { root: $("p-root").value }, "p-msg", (job) => rememberUpdates(job.result));
   $("p-update-all").onclick = () => {
     if (!confirm("更新所有「可更新」的專案？專案改過的檔案不會被覆蓋（另存 *.template），有未 commit 修改的專案會略過，不會推送。")) return;
     startJob("/api/update/apply", { root: $("p-root").value, commit: true, confirm: true }, "p-msg", async (job) => { await loadOverview(); rememberUpdates(job.result); });
   };
-  $("p-fetch").onclick = () => startJob("/api/fetch", { root: $("p-root").value }, "p-msg", loadOverview);
+  $("p-fetch").onclick = () => startJob("/api/fetch", { root: $("p-root").value }, "p-msg", () => loadOverview(false));
   $("p-add-go").onclick = async () => {
     const path = $("p-add").value.trim();
     if (!path) { say("p-msg", "先選擇既有專案的資料夾", true); return; }
@@ -758,15 +827,22 @@ async function init() {
     } catch (err) { say("p-msg", err.message, true); }
   };
   $("p-feedback").onclick = () => { showTab("feedback"); $("f-root").value = $("p-root").value; $("f-scan").click(); };
-  $("f-scan").onclick = async () => {
-    try {
-      const data = await api("GET", `/api/feedback?root=${encodeURIComponent($("f-root").value)}&all=${$("f-all").checked ? 1 : 0}`);
-      say("f-msg", `掃描 ${data.scanned} 個專案，共 ${data.items.length} 條。決定後到各專案的檔案把狀態改成「已採用」或「不採用」。`);
-      $("f-table").innerHTML = data.items.length ? "<tr><th>日期</th><th>專案</th><th>建議</th><th>來源</th><th>狀態</th></tr>" + data.items.map((i) => `
-        <tr><td>${esc(i.date)}</td><td>${esc(i.project)}<br><span class="hint">v${esc(i.version)}</span></td><td>${esc(i.text)}<br><span class="hint">${esc(i.file)}</span></td>
-        <td>${esc(i.source)}</td><td><span class="chip">${esc(i.status)}</span></td></tr>`).join("") : "";
-    } catch (err) { say("f-msg", err.message, true); }
+  $("f-scan").onclick = loadFeedback;
+  $("f-add").onclick = submitFeedback;
+  const maybeRefresh = () => {
+    const projectsTab = document.querySelector('[role=tab][data-tab="projects"]');
+    if (!document.hidden && projectsTab && projectsTab.getAttribute("aria-selected") === "true" && Date.now() - lastOverviewAt >= 3000) {
+      loadOverview(true);
+    }
   };
+  window.addEventListener("focus", maybeRefresh);
+  document.addEventListener("visibilitychange", maybeRefresh);
+  setInterval(() => {
+    const projectsTab = document.querySelector('[role=tab][data-tab="projects"]');
+    if (!document.hidden && projectsTab && projectsTab.getAttribute("aria-selected") === "true" && $("job").hidden) {
+      loadOverview(true);
+    }
+  }, 15000);
   $("u-preview").onclick = () => startJob("/api/update/preview", { root: $("u-root").value }, "u-msg", (job) => drawUpdate(job.result));
   $("u-apply").onclick = () => {
     if (!confirm("要更新表格中「可更新」的專案嗎？（不會推送、不會覆蓋專案改過的檔案）")) return;
@@ -774,6 +850,60 @@ async function init() {
   };
   loadOverview();
   poll();
+}
+
+/**
+ * Load all feedback suggestions across tracked projects and wire inline status action buttons.
+ * @returns {Promise<void>} Resolves once rendered.
+ */
+async function loadFeedback() {
+  try {
+    const data = await api("GET", `/api/feedback?root=${encodeURIComponent($("f-root").value)}&all=${$("f-all").checked ? 1 : 0}`);
+    FEEDBACK_ITEMS = data.items || [];
+    say("f-msg", `掃描 ${data.scanned} 個專案，共 ${FEEDBACK_ITEMS.length} 條。可直接在右側按鈕切換狀態。`);
+    $("f-table").innerHTML = FEEDBACK_ITEMS.length
+      ? "<tr><th>日期</th><th>專案</th><th>建議</th><th>來源</th><th>狀態</th><th>操作</th></tr>" + FEEDBACK_ITEMS.map((i, idx) => `
+        <tr><td>${esc(i.date)}</td><td>${esc(i.project)}<br><span class="hint">v${esc(i.version)}</span></td><td>${esc(i.text)}<br><span class="hint">${esc(i.file)}</span></td>
+        <td>${esc(i.source)}</td><td><span class="chip ${i.status.startsWith("已採用") ? "ok" : (i.status.startsWith("待決定") ? "warn" : "")}">${esc(i.status)}</span></td>
+        <td><div class="row">
+          <button class="small" data-fb-idx="${idx}" data-fb-status="已採用">已採用</button>
+          <button class="small" data-fb-idx="${idx}" data-fb-status="不採用">不採用</button>
+          <button class="small" data-fb-idx="${idx}" data-fb-status="待決定">待決定</button>
+        </div></td></tr>`).join("")
+      : "";
+    $("f-table").querySelectorAll("[data-fb-status]").forEach((b) => {
+      b.onclick = async () => {
+        const item = FEEDBACK_ITEMS[Number(b.dataset.fbIdx)];
+        if (!item) return;
+        try {
+          await api("POST", "/api/feedback/status", {
+            file: item.file, text: item.text, date: item.date, status: b.dataset.fbStatus, confirm: true,
+          });
+          await Promise.all([loadFeedback(), loadOverview(true)]);
+          say("f-msg", `已將 [${item.project}] 的建議狀態更新為「${b.dataset.fbStatus}」`);
+        } catch (err) { say("f-msg", err.message, true); }
+      };
+    });
+  } catch (err) { say("f-msg", err.message, true); }
+}
+
+/**
+ * Append a new suggestion into the selected project's docs/TEMPLATE_FEEDBACK.md.
+ * @returns {Promise<void>} Resolves once written and refreshed.
+ */
+async function submitFeedback() {
+  const project = $("f-project").value;
+  const text = $("f-text").value.trim();
+  const source = $("f-source").value.trim() || "master-hub";
+  if (!project || !text) { say("f-msg", "請先選擇專案並填入建議內容", true); return; }
+  try {
+    const res = await api("POST", "/api/feedback/add", {
+      project, root: $("f-root").value, text, source, confirm: true,
+    });
+    $("f-text").value = "";
+    await Promise.all([loadFeedback(), loadOverview(true)]);
+    say("f-msg", `✅ 已寫入 ${res.project} 的 TEMPLATE_FEEDBACK.md`);
+  } catch (err) { say("f-msg", err.message, true); }
 }
 
 init();
