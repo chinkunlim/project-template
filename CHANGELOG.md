@@ -27,6 +27,8 @@ The template's version is the framework version that projects record in `.agents
 - feat(framework): implement tier 1 and tier 2 template upgrades (v3.6.0) (by `@antigravity`)
 - feat(standards): add SDD/BDD/TDD tiered workflow (rule 16) and BDD Given/When/Then spec template (by `@antigravity`)
 - feat(web): integrate Google Chrome Modern Web Guidance standard and document installed Antigravity plugins (by `@antigravity`)
+- feat(registry): exclude projects marked `status = "terminated"` from tracked projects and bulk updates (by `@antigravity`)
+- feat(registry): support terminated project status in tracked_projects (by `@antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)

@@ -118,18 +118,73 @@ def update_framework(project: Path, *args: str) -> subprocess.CompletedProcess[s
     return run([sys.executable, str(UPDATER), "--from", str(TEMPLATE_ROOT), "--project", str(project), *args], project)
 
 
+def _terminated_paths() -> set[Path]:
+    """Return resolved paths marked `terminated` in `.local/projects.json`.
+
+    Returns:
+        Set of resolved project root paths with `status == "terminated"`.
+    """
+    return {
+        Path(r["path"]).resolve()
+        for r in project_registry.load()
+        if str(r.get("status", "")).lower() == "terminated"
+    }
+
+
+def _toml_project_status(toml_path: Path) -> str:
+    """Read `[project].status` from a `.agents/project.toml` without requiring Python 3.11+.
+
+    Args:
+        toml_path: Path to `.agents/project.toml`.
+
+    Returns:
+        Lowercased status string, or empty string when unset/unreadable.
+    """
+    try:
+        text = toml_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    in_project = False
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_project = line[1:-1].strip() == "project"
+            continue
+        if in_project and (match := re.match(r'^status\s*=\s*["\']([^"\']*)["\']$', line)):
+            return match.group(1).strip().lower()
+    return ""
+
+
+def is_terminated(folder: Path) -> bool:
+    """Tell whether a project is marked `terminated` in project.toml or the registry.
+
+    Args:
+        folder: Project root directory.
+
+    Returns:
+        True when `[project].status == "terminated"` or the registry marks it terminated.
+    """
+    resolved = folder.resolve()
+    if resolved in _terminated_paths():
+        return True
+    toml_path = resolved / ".agents" / "project.toml"
+    return toml_path.is_file() and _toml_project_status(toml_path) == "terminated"
+
+
 def is_project(folder: Path) -> bool:
-    """Tell whether a folder is a project made with this template (not the template itself).
+    """Tell whether a folder is an active project made with this template (not the template itself).
 
     Args:
         folder: Folder to check.
 
     Returns:
-        True when it has `.agents/framework.lock` and `scripts/agentctl.py`.
+        True when it has `.agents/framework.lock`, `scripts/agentctl.py`, and is not terminated.
     """
     resolved = folder.resolve()
     return resolved != TEMPLATE_ROOT and (resolved / ".agents" / "framework.lock").is_file() \
-        and (resolved / "scripts" / "agentctl.py").is_file()
+        and (resolved / "scripts" / "agentctl.py").is_file() and not is_terminated(resolved)
 
 
 def registered_projects() -> list[Path]:

@@ -1352,6 +1352,29 @@ class TrackedProjectsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ts.fetch_steps({"path": str(self.base / "ok")}, self.base)  # no git remote: nothing to fetch
 
+    def test_terminated_projects_are_excluded_from_tracked(self) -> None:
+        """Projects marked `status = "terminated"` in project.toml or registry are excluded from tracked_projects."""
+        from project_template.services import update_all
+
+        active = self.base / "active"
+        by_toml = self.base / "by_toml"
+        by_reg = self.base / "by_reg"
+        for folder, name in ((active, "active"), (by_toml, "by_toml"), (by_reg, "by_reg")):
+            scaffold_project(folder, name, stack="generic", init_git_repo=False)
+
+        toml_path = by_toml / ".agents" / "project.toml"
+        toml_path.write_text(
+            toml_path.read_text(encoding="utf-8").replace('name = "by_toml"', 'name = "by_toml"\nstatus = "terminated"'),
+            encoding="utf-8",
+        )
+        Path(os.environ["TEMPLATE_REGISTRY_FILE"]).write_text(
+            json.dumps([{"path": str(by_reg), "name": "by_reg", "how": "existing", "status": "terminated"}]),
+            encoding="utf-8",
+        )
+
+        tracked = update_all.tracked_projects([self.base], registered=True)
+        self.assertEqual(tracked, [active.resolve()])
+
 
 @unittest.skipUnless(os.environ.get("TEMPLATE_UV_TESTS") and shutil.which("uv"), "set TEMPLATE_UV_TESTS=1 (needs uv + network)")
 class WebUiIntegrationTest(unittest.TestCase):
