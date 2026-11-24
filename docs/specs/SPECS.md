@@ -10,5 +10,5 @@
 
 | 規格 | 狀態 | 說明 |
 |---|---|---|
-| [`001-project-web-launcher.md`](001-project-web-launcher.md) | Approved | 總控台網頁整合各專案 FastAPI 啟動器、MCP/OpenAPI 三入口與 `scripts/hub.py` 單一指令集 |
-| [`002-master-child-linkage.md`](002-master-child-linkage.md) | Approved | 清除母版全部 Code Review Guard 警告，並實作母版⇄子專案自動發現 Web、更新 Graphify、狀態掃描與回饋雙向連動 |
+| [`001-project-web-launcher.md`](001-project-web-launcher.md) | Implemented | 總控台網頁整合各專案 FastAPI 啟動器、MCP/OpenAPI 三入口與 `scripts/hub.py` 單一指令集 |
+| [`002-master-child-linkage.md`](002-master-child-linkage.md) | Implemented | 清除母版全部 Code Review Guard 警告，並實作母版⇄子專案自動發現 Web、更新 Graphify、狀態掃描與回饋雙向連動 |

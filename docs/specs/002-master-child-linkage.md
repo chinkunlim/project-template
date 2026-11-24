@@ -1,6 +1,6 @@
 # SPEC-002：母版與各子專案雙向連動＆零警告重構（Master–Child Live Linkage）
 
-- **狀態**：Approved <!-- Draft | Approved | Implemented | Deprecated -->
+- **狀態**：Implemented <!-- Draft | Approved | Implemented | Deprecated -->
 - **日期**：2026-11-24
 - **相關任務 / ADR**：[ADR-002](../adr/002-tracked-projects.md)、[ADR-005](../adr/005-support-global-graphify-and-superpowers.md)、[SPEC-001](001-project-web-launcher.md)
 

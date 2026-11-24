@@ -3,7 +3,7 @@
 網頁、Open WebUI 工具（`src/project_template/entrypoints/openwebui_tool.py`）與其他程式共用同一組 API。
 
 - 位址：`http://127.0.0.1:8766`（`--port` 可改）；只綁 127.0.0.1。互動文件 `/docs`，規格 `/openapi.json`（Open WebUI 可直接加成 OpenAPI 工具伺服器），MCP 在 `/mcp`；stdio MCP：`python3 scripts/template_mcp.py`。
-- 會修改檔案的端點（create、migrate、registry/add、push、update/apply、project-command 的 doctor-fix / setup）需要 `"confirm": true`，否則回 428。
+- 會修改檔案的端點（create、migrate、registry/add、push、update/apply、project-command 的 doctor-fix / setup / sync、feedback/add、feedback/status、web/start、web/stop、web/stop-all）需要 `"confirm": true`，否則回 428。
 - Host 必須是 `127.0.0.1` / `localhost`（防 DNS rebinding）；Open WebUI 在 Docker 時啟動加 `--allow-host host.docker.internal`。
 - POST 若帶其他網站的 `Origin` 一律 403（防惡意網頁 CSRF）；Open WebUI（`http://127.0.0.1:8080`，可用 `--allow-origin` 改）允許並開放 CORS；伺服器端程式不帶 Origin，可以呼叫。
 - 一次只執行一個工作；工作執行的是一般指令（`scripts/init_project.py`、`scripts/migrate_project.py`、`agentctl …`、`scripts/update_all.py`），不會推送、不會刪檔。

@@ -33,6 +33,9 @@
 | 2026-11-10 | **一鍵安裝與後期平滑更新鐵律**：專案到最後必須具備一鍵安裝能力（自動處理鎖定依賴、.env 與 DATA_DIR），且必須規劃並記錄後期更新升級與資料安全保護機制。 | 使用者直接指示 | 已採用 |
 | 2026-11-10 | **Code Review 零忽視與即時修復鐵律**：執行檢查若有問題不要忽略，必須馬上解決，消除技術債，維持零違規提交。 | 使用者直接指示 | 已採用 |
 | 2026-11-22 | **Tier 1 全專案通用修復與防線 + Tier 2 Web/API/DB 標準化套件（v3.6.0）**：`setup_env` 映射/stdlib 補強、`commit --push` 空樹推送、`review_guard --staged`、多 Agent `closeout --paths` 與任務互斥、`detect_framework_drift`、Graphify 自動刷新 Hooks、`TASK-NNN-checklist.md`、`wiring.py` + `safe_user_path`、`domain/protocols.py`、Request-Scoped DB Session、`NoCacheStaticFiles` + Tailscale Host + `safe_resolve_under`、`port_check` + `test_web_contracts`、`api_client.js` | 使用者直接指示：「落實第一級和第二級」 | 已採用（v3.6.0） |
+| 2026-11-24 | **總控台單一入口速查表（零查找浪費 Token）**：在 `AGENTS.md` §1 與 `PROJECT_RULES.md` §5 寫明 `scripts/hub.py` 單一指令集，讓 AI 收到啟停／同步口語要求時直接執行，不浪費 Token 翻找檔案。 | 01 project_template / SPEC-001 | 已採用（`scripts/hub.py` + `AGENTS.md` §1） |
+| 2026-11-24 | **母版 ⇄ 子專案雙向連動與按需啟停**：新專案 `--with api` 自動分配不衝突埠號並寫入 `[web]`，母版總控台自動發現並支援按需啟停、更新 Graphify、架構掃描與跨專案讀寫 `TEMPLATE_FEEDBACK.md`，免來回切換資料夾。 | 01 project_template / SPEC-001、SPEC-002 | 已採用（v3.6.0 Hub Web/API/MCP/CLI 全線落地） |
+| 2026-11-24 | **Closeout 同步刷新 Graphify 與 Hook 脫離保護**：`session-closeout` 同步執行 `build_graph.py` + `graphify update .`，並以 `nohup ... disown` + `trap EXIT` + `SKIP_GRAPHIFY_HOOK` 避免 `.hook.lock` 殘留與重複刷新。 | 01 project_template / ISSUE-006 | 已採用（`closeout_runner.py` + `.agents/hooks/graphify-refresh.sh`） |
 
 ---
 

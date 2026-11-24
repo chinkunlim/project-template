@@ -1,4 +1,4 @@
-# 01 project_template — 新專案母版（v3.4）
+# 01 project_template — 新專案母版（v3.6.0）
 
 執行一個指令，就為新專案建立**統一的資料夾與文件結構**、AI Agent 規則、交接與溯源紀錄、品質檢查與語言範本。適用情境：**同一時間只有一個 AI Agent 在改程式**，不同 Agent（Claude Code、Gemini/Antigravity、Cursor、Windsurf、Copilot、Codex）或不同對話輪流接手。
 
@@ -102,6 +102,7 @@ python3 scripts/init_project.py --list-skills
 | `--force` | 允許寫入非空資料夾（預設會拒絕，避免覆蓋既有檔案；此時不會自動 commit） |
 | `--no-git` | 不建立 git repo |
 | `--data-dir` | 資料資料夾（預設 `../../projects-data/<名稱>`）；同一顆硬碟會存成相對路徑，外接硬碟的絕對路徑只寫進 `.env`（不進 git） |
+| `--http-port` | FastAPI 本機埠號（`--with api` 時未指定會自動避開 `PORTS.md` 與既有追蹤專案已用埠號並寫入 `[web]`） |
 
 建立後（第一次 commit 已自動完成）：
 

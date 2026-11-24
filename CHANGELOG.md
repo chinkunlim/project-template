@@ -29,13 +29,15 @@ The template's version is the framework version that projects record in `.agents
 - feat(web): integrate Google Chrome Modern Web Guidance standard and document installed Antigravity plugins (by `@antigravity`)
 - feat(registry): exclude projects marked `status = "terminated"` from tracked projects and bulk updates (by `@antigravity`)
 - feat(registry): support terminated project status in tracked_projects (by `@antigravity`)
-- feat(hub): clear all review warnings and add master-child live linkage (by `@antigravity`)
+- feat(web): integrate project web launcher hub, MCP/OpenAPI endpoints, and scripts/hub.py single-command CLI (SPEC-001) (by `@antigravity`)
+- feat(hub): clear all review warnings and add master-child live linkage (SPEC-002) (by `@antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)
 - fix(framework): backport setup_env import hints check and auto_commit missing file staging (by `@antigravity`)
 - fix(skills): remove bash comments in compliance-scanner doc for zsh compatibility (by `@antigravity`)
-- fix(closeout): run graphify update synchronously and harden hook detach (by `@antigravity`)
+- fix(closeout): run graphify update synchronously and harden hook detach (ISSUE-006) (by `@antigravity`)
+- fix(docs/entrypoints): fix docs/entrypoints logic (ADR-002, ADR-005, ISSUE-006) (by `@antigravity`)
 
 ### Documentation
 - docs: add superpowers plugin and methodology skills to local AI environment (by `@antigravity`)

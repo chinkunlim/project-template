@@ -1,6 +1,6 @@
 # SPEC-001：總控台網頁整合專案 FastAPI 啟動器（Project Web Launcher Hub）
 
-- **狀態**：Approved <!-- Draft | Approved | Implemented | Deprecated -->
+- **狀態**：Implemented <!-- Draft | Approved | Implemented | Deprecated -->
 - **日期**：2026-11-24
 - **相關任務 / ADR**：[ADR-002](../adr/002-tracked-projects.md)
 
