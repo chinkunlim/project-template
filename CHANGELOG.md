@@ -25,6 +25,8 @@ The template's version is the framework version that projects record in `.agents
 - feat(skills): add compliance-scanner skill and agentctl scan command (by `@antigravity`)
 - feat(standards): add iron rule 15 for zero-tolerance immediate code review resolution (by `@antigravity`)
 - feat(framework): implement tier 1 and tier 2 template upgrades (v3.6.0) (by `@antigravity`)
+- feat(standards): add SDD/BDD/TDD tiered workflow (rule 16) and BDD Given/When/Then spec template (by `@antigravity`)
+- feat(web): integrate Google Chrome Modern Web Guidance standard and document installed Antigravity plugins (by `@antigravity`)
 
 ### Fixed
 - fix(tests): exclude conversations and graphify-out directories from zsh paste safe doc check (by `@antigravity`)
@@ -37,6 +39,7 @@ The template's version is the framework version that projects record in `.agents
 - docs(standards): standardize web app and architecture rules for local AI (by `@antigravity`)
 - docs(adr/test): update adr/test documentation (ADR-002, ADR-003, ADR-004, ADR-005) (by `@antigravity`)
 - docs(standards): eliminate duplicate entry and generalize layout terms (by `@antigravity`)
+- docs(docs): update docs documentation (by `@antigravity`)
 
 ### Chore
 - chore: sync agent adapters and project tree (by `@antigravity`)

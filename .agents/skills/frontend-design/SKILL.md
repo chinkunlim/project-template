@@ -12,6 +12,7 @@ description: >-
 # Frontend Design — Web 應用程式工程架構與無障礙規範
 
 > **GitHub 來源基準**：整合自 [`anthropics/skills/frontend-design`](https://github.com/anthropics/skills)、[`vercel-labs/agent-skills/web-design-guidelines`](https://github.com/vercel-labs/agent-skills) 與 [`Leonxlnx/taste-skill`](https://github.com/Leonxlnx/taste-skill)。
+> **現代原生標準互補**：底層原生 HTML / CSS / Web API 選型與 Baseline 相容性，請同步遵循 [`docs/standards/web/modern_web_guidance.md`](../../../docs/standards/web/modern_web_guidance.md)（對齊 [`GoogleChrome/modern-web-guidance`](https://github.com/GoogleChrome/modern-web-guidance)）。
 > **可執行工具**：[`scripts/frontend_tool.py`](scripts/frontend_tool.py)（骨架、工程與無障礙檢查）、[`scripts/taste_auditor.py`](scripts/taste_auditor.py)（視覺品味與 Anti-Slop 審查）
 
 當專案需要開發 Web-based App、管理後台、資料視覺化儀表板或互動式網頁元件時，啟動本技能確保前端具備**完整設計系統 (Design Tokens)、RWD 響應式佈局、無障礙 (a11y) 與高效能體驗**；視覺品味規則見 §3–§5。

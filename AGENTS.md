@@ -42,6 +42,7 @@
 13. **網頁一定要能給 AI 工具用**：使用者要網頁、API，或要讓 Open WebUI / Ollama / 其他 Agent 使用時，先依 [`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) §2 的清單確認需求（誰用、哪些動作會改資料、接哪些工具、要不要本機模型、資料、介面、啟動方式、埠號、驗收），整理成摘要請使用者確認；再一律用 FastAPI（`--with api`），不要做單純的網頁。同一組 `services` 由三個入口呼叫：HTTP 路由（OpenAPI 給 Open WebUI）、MCP 工具（`entrypoints/mcp_server.py`，給 Claude Code、Antigravity、OpenCode、Cursor、Open WebUI）與網頁。新增功能時三個入口一起接；會修改或刪除資料的 MCP 工具要有 `confirm` 參數。
 14. **一鍵安裝與後期平滑更新**：專案到最後必須具備一鍵安裝能力（如 `./install.sh`、`python3 scripts/agentctl.py setup` 或明確的一鍵啟動指令），自動完成套件鎖定安裝（`uv sync` / `pnpm install`）、`.env` 初始化、建立 `DATA_DIR` 目錄與資料庫遷移；同時必須設計並記錄後期的更新方法（如更新指令、資料庫向下相容遷移、保護既有資料與使用者設定不被覆蓋），禁止讓使用者手動除錯或執行繁雜的多步驟流程（見 [`docs/standards/env/install_and_update.md`](docs/standards/env/install_and_update.md)）。
 15. **Code Review 即時修復（零忽視、當下解決）**：執行 `code-review-guard` 或 `agentctl check` 時，若出現任何警告或錯誤（包含註解缺漏、巢狀過深、函式過長、參數過多、跨層依賴、成對呼叫缺失等），**嚴禁忽視、略過或推延至下次，必須立刻重構修正或按規範解決**，確保進入 Git Commit 的程式碼庫永遠維持零違規與最高品質標準（見 [`docs/standards/coding/code_review_zero_tolerance.md`](docs/standards/coding/code_review_zero_tolerance.md)）。
+16. **SDD / BDD / TDD 分級開發流程**：一般修 Bug 或內部重構直接走 **TDD**（`tdd-bugfix`，先寫失敗測試再實作）；**新功能、API 變更或跨模組改動**須走 **SDD ➔ BDD ➔ TDD**：先寫 [`docs/specs/NNN-*.md`](docs/specs/SPECS.md) 規格並以 `Given / When / Then` 列出驗收場景，再逐一轉成失敗測試與最小實作（見 [`docs/standards/testing/sdd_bdd_tdd.md`](docs/standards/testing/sdd_bdd_tdd.md)）。
 <!-- RULES_END -->
 
 ## 2.5 Agent 分工（選填，由使用者維護）
@@ -77,8 +78,8 @@
 | **修改或寫入資料** | [`coding/data_guard.md`](docs/standards/coding/data_guard.md) | `web/`、`GIT_AND_VERSIONING.md` |
 | **新增模組 / 分層架構** | [`architecture/layers.md`](docs/standards/architecture/layers.md)<br>[`architecture/workflow_parity.md`](docs/standards/architecture/workflow_parity.md) | `testing/`、`coding/comments.md` |
 | **開發 Web / API / MCP** | [`web/fastapi_mcp.md`](docs/standards/web/fastapi_mcp.md)<br>[`LOCAL_AI_ENVIRONMENT.md`](docs/standards/LOCAL_AI_ENVIRONMENT.md) | `testing/`、`coding/data_guard.md` |
-| **UI 介面設計 / 視覺風格** | [`web/taste_design.md`](docs/standards/web/taste_design.md) | `architecture/`、`testing/` |
-| **寫測試、虛擬測試** | [`testing/virtual_testing.md`](docs/standards/testing/virtual_testing.md)<br>[`testing/empirical_evidence.md`](docs/standards/testing/empirical_evidence.md) | `web/`、`coding/data_guard.md` |
+| **UI 介面設計 / 視覺風格** | [`web/taste_design.md`](docs/standards/web/taste_design.md)<br>[`web/modern_web_guidance.md`](docs/standards/web/modern_web_guidance.md) | `architecture/`、`testing/` |
+| **寫測試、虛擬測試 / 新功能開發** | [`testing/sdd_bdd_tdd.md`](docs/standards/testing/sdd_bdd_tdd.md)<br>[`testing/virtual_testing.md`](docs/standards/testing/virtual_testing.md)<br>[`testing/empirical_evidence.md`](docs/standards/testing/empirical_evidence.md) | `web/`、`coding/data_guard.md` |
 | **環境、依賴、DATA_DIR、安裝更新** | [`env/data_dir_layout.md`](docs/standards/env/data_dir_layout.md)<br>[`env/icloud_rules.md`](docs/standards/env/icloud_rules.md)<br>[`env/install_and_update.md`](docs/standards/env/install_and_update.md) | `architecture/`、`testing/` |
 | **Git commit、交接、收工** | [`GIT_AND_VERSIONING.md`](docs/standards/GIT_AND_VERSIONING.md)<br>[`MULTI_AGENT_COLLABORATION.md`](docs/standards/MULTI_AGENT_COLLABORATION.md) | `coding/`、`architecture/` |
 
@@ -101,6 +102,14 @@
 
 詳細步驟：`.agents/skills/<skill>/SKILL.md`
 <!-- SKILLS_END -->
+
+### 已安裝外部 Plugins（環境層，按需調用）
+
+| Plugin | 核心 Skills | 何時調用 |
+|---|---|---|
+| `modern-web-guidance-plugin` | `modern-web-guidance`、`chrome-extensions` | 開發或重構 HTML/CSS/JS 前端、Chrome 擴充功能時，查詢 Baseline 現代原生寫法 |
+| `chrome-devtools-plugin` | `chrome-devtools`、`a11y-debugging`、`debug-optimize-lcp`、`cookie-debugging`、`memory-leak-debugging` | 本機 `127.0.0.1` 網頁實機除錯、無障礙稽核、LCP 效能、Cookie 或記憶體洩漏排查時 |
+| `superpowers` | `brainstorming`、`writing-plans`、`systematic-debugging`、`test-driven-development`、`verification-before-completion` | 大型規劃、系統化除錯、TDD 與完成前實證驗證時配合本模板規則使用 |
 
 ## 6. 目錄結構摘要
 
